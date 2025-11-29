@@ -1,0 +1,83 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
+Python / Backend specific files
+
+------------------------------------
+
+Virtual environment directory
+
+.venv/
+venv/
+env/
+
+Python compiled objects
+
+pycache/
+*.pyc
+*.pyo
+
+Flask/Werkzeug metadata
+
+.flaskenv
+
+TensorFlow / AI artifacts
+
+fruit_model.h5
+class_indices.json
+
+MongoDB / Database data
+
+If MongoDB is saving local files in the backend directory
+
+data/
+db/
+*.mongodb
+
+Node / Frontend specific files
+
+------------------------------------
+
+Node modules
+
+/frontend/node_modules
+/node_modules
+
+Production build output
+
+/frontend/dist
+
+Build cache and logs
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+
+Logs
+
+log/
+*.log
