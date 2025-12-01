@@ -23,7 +23,6 @@ const App = () => {
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Fetch history once on mount
   useEffect(() => {
     fetchHistory();
   }, []);
@@ -83,9 +82,6 @@ const App = () => {
 
   const switchTab = (tab) => {
     setActiveTab(tab);
-    // Removed auto-fetch on tab switch to prevent overwriting session history
-    // if the DB is temporarily unreachable.
-    // User can use the 'Refresh' button in the tab to force a fetch.
   };
 
   const handlePrediction = async () => {
@@ -107,9 +103,6 @@ const App = () => {
 
       if (response.ok) {
         setResult(data);
-
-        // Optimistically update history state immediately
-        // This ensures the user sees the result in the history tab even if the DB fetch fails later
         const newHistoryItem = {
           filename: file.name,
           label: data.label,

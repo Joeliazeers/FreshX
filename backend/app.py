@@ -13,20 +13,15 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# --- MODEL CONFIGURATION ---
-# Use environment variable to select which model to load (e.g., "fruit", "vegetables")
 MODEL_NAME_BASE = os.environ.get("MODEL_NAME", "fruit") 
 MODEL_FILENAME = f'{MODEL_NAME_BASE}_model.h5'
 INDICES_FILENAME = f'{MODEL_NAME_BASE}_class_indices.json'
 
-# --- LOCAL CONFIGURATION ---
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
 
-# Local file paths (assumed to be in the current working directory, e.g., FreshX/backend)
 MODEL_PATH = MODEL_FILENAME
 INDICES_PATH = INDICES_FILENAME
 
-# MongoDB connection setup
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client['freshx_db']
 history_collection = db['history']
@@ -37,7 +32,6 @@ class_labels = {}
 def load_model_and_indices():
     global model, class_labels
 
-    # 1. Load Model Locally
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
         print(f"Model '{MODEL_NAME_BASE}' loaded successfully from local path.")
@@ -96,7 +90,6 @@ def predict():
             'model_used': MODEL_NAME_BASE 
         }
 
-        # Attempt to save history
         try:
             history_record = {
                 "filename": file.filename,
