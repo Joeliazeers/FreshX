@@ -169,7 +169,7 @@ const App = () => {
           {activeTab === "scanner" ? (
             <div className="w-full max-w-xl animate-in fade-in zoom-in duration-300">
               <div className="text-center mb-8">
-                <h2 className="text-4xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                <h2 className="text-4xl font-extrabold mb-4 bg-clip-text text-transparent bg-linear-to-r from-white to-gray-400">
                   Is your fruit fresh?
                 </h2>
                 <p className="text-gray-400 text-lg">
@@ -179,7 +179,7 @@ const App = () => {
               </div>
 
               <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-500 opacity-50"></div>
+                <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-emerald-500 via-teal-500 to-blue-500 opacity-50"></div>
 
                 {!preview ? (
                   <div
@@ -226,7 +226,7 @@ const App = () => {
                 <div className="mt-8">
                   {error && (
                     <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-200">
-                      <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                      <AlertCircle className="w-5 h-5 shrink-0" />
                       <span className="text-sm">{error}</span>
                     </div>
                   )}

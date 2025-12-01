@@ -13,38 +13,45 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# MongoDB connection setup
-MONGO_URI = 'mongodb://localhost:27017/'
+# --- MODEL CONFIGURATION ---
+# Use environment variable to select which model to load (e.g., "fruit", "vegetables")
+MODEL_NAME_BASE = os.environ.get("MODEL_NAME", "fruit") 
+MODEL_FILENAME = f'{MODEL_NAME_BASE}_model.h5'
+INDICES_FILENAME = f'{MODEL_NAME_BASE}_class_indices.json'
 
-# Initialize MongoClient. 
-# We do NOT set this to None if it fails initially. Pymongo handles auto-reconnection.
-# serverSelectionTimeoutMS=5000 means it will wait 5 seconds before giving up on a query.
+# --- LOCAL CONFIGURATION ---
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+
+# Local file paths (assumed to be in the current working directory, e.g., FreshX/backend)
+MODEL_PATH = MODEL_FILENAME
+INDICES_PATH = INDICES_FILENAME
+
+# MongoDB connection setup
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client['freshx_db']
 history_collection = db['history']
-
-MODEL_PATH = 'fruit_model.h5'
-INDICES_PATH = 'class_indices.json'
 
 model = None
 class_labels = {}
 
 def load_model_and_indices():
     global model, class_labels
+
+    # 1. Load Model Locally
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
-        print("Model loaded successfully")
+        print(f"Model '{MODEL_NAME_BASE}' loaded successfully from local path.")
         
         if os.path.exists(INDICES_PATH):
             with open(INDICES_PATH, 'r') as f:
                 indices = json.load(f)
                 class_labels = {v: k for k, v in indices.items()}
-                print(f"Loaded class labels: {class_labels}")
+                print(f"Loaded class labels from {INDICES_PATH}: {class_labels}")
         else:
-            print("Warning: class_indices.json not found. Predictions might be wrong.")
+            print(f"Warning: {INDICES_PATH} not found. Predictions might be wrong.")
             
     except Exception as e:
-        print(f"Error loading model or indices: {e}")
+        print(f"Error loading model or indices: {e}. Ensure model training was successful.")
 
 load_model_and_indices()
 
@@ -85,11 +92,11 @@ def predict():
         response_data = {
             'label': label_formatted,
             'confidence': float(confidence * 100),
-            'is_fresh': is_fresh
+            'is_fresh': is_fresh,
+            'model_used': MODEL_NAME_BASE 
         }
 
         # Attempt to save history
-        # We use a try/except here so that if MongoDB is down, the user still gets their prediction result.
         try:
             history_record = {
                 "filename": file.filename,
@@ -109,8 +116,6 @@ def predict():
 @app.route('/history', methods=['GET'])
 def get_history():
     try:
-        # Check connection implicitly by attempting a query
-        # This will wait up to 5 seconds (configured above) if the server is unreachable
         history = list(history_collection.find({}, {'_id': 0}).sort('timestamp', -1))
         return jsonify(history)
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
@@ -121,4 +126,4 @@ def get_history():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
