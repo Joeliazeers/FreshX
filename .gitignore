@@ -47,8 +47,7 @@ Flask/Werkzeug metadata
 TensorFlow / AI artifacts
 
 fruit_model.h5
-class_indices.json
-
+fruit_class_indices.json
 MongoDB / Database data
 
 If MongoDB is saving local files in the backend directory

@@ -56,7 +56,7 @@ cd backend
 
 # Create and activate the Python virtual environment
 python3 -m venv .venv
-source .venv/bin/activate  # Use '.\.venv\Scripts\activate' on Windows
+source .venv/bin/activate  # Use '.venv\\Scripts\\python.exe app.py' on Windows
 
 # Install Python dependencies (Flask, TensorFlow, PyMongo, etc.)
 pip install -r requirements.txt
