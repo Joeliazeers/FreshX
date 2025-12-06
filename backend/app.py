@@ -9,13 +9,11 @@ import os
 from datetime import datetime
 from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
 
-# Import database functions
 from database import insert_history_record, get_all_history, delete_history_record, delete_all_history
 
 app = Flask(__name__)
 CORS(app)
 
-# --- MODEL CONFIGURATION ---
 MODEL_NAME_BASE = os.environ.get("MODEL_NAME", "fruit") 
 MODEL_FILENAME = f'{MODEL_NAME_BASE}_model.h5'
 INDICES_FILENAME = f'{MODEL_NAME_BASE}_class_indices.json'
@@ -139,4 +137,5 @@ def delete_history_item(item_id):
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', debug=True, port=port)

@@ -37,6 +37,49 @@ import {
   Area,
 } from "recharts";
 
+const resizeImageAndGetBlob = (file, maxWidth, maxHeight) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height *= maxWidth / width));
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width *= maxHeight / height));
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            resolve(blob);
+          },
+          file.type || "image/jpeg",
+          0.9
+        );
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
 const COLORS = ["#10b981", "#ef4444", "#3b82f6", "#f59e0b"];
 
 const ResultDetailCard = ({ modelUsed, result }) => {
@@ -278,7 +321,7 @@ const App = () => {
 
   const [scannerMode, setScannerMode] = useState("upload");
 
-  const API_URL = "http://localhost:5000";
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     fetchHistory();
@@ -383,7 +426,7 @@ const App = () => {
 
       if (!response.ok) {
         setHistoryError(
-          `Database unavailable (Status: ${response.status}). Is MongoDB running?`
+          `Database unavailable (Status: ${response.status}). Is backend running?`
         );
         return;
       }
@@ -391,7 +434,7 @@ const App = () => {
       const data = await response.json();
       setHistory(data);
     } catch (err) {
-      setHistoryError("Failed to connect to history. Is Backend/DB running?");
+      setHistoryError("Failed to connect to history.");
     } finally {
       setLoadingHistory(false);
     }
@@ -485,11 +528,11 @@ const App = () => {
   };
 
   const handlePrediction = async () => {
-    let fileToSend = null;
+    let rawFile = null;
     let fileName = "";
 
     if (scannerMode === "upload" && file) {
-      fileToSend = file;
+      rawFile = file;
       fileName = file.name;
     } else if (scannerMode === "camera" && isCameraActive) {
       const video = videoRef.current;
@@ -501,7 +544,7 @@ const App = () => {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      fileToSend = await new Promise((resolve) =>
+      rawFile = await new Promise((resolve) =>
         canvas.toBlob(resolve, "image/jpeg")
       );
       fileName = "live_capture.jpg";
@@ -510,7 +553,7 @@ const App = () => {
       stopCamera();
     }
 
-    if (!fileToSend) {
+    if (!rawFile) {
       setError("Please upload an image or activate the camera first.");
       return;
     }
@@ -518,8 +561,10 @@ const App = () => {
     setLoading(true);
     setError(null);
 
+    const resizedBlob = await resizeImageAndGetBlob(rawFile, 400, 400);
+
     const formData = new FormData();
-    formData.append("file", fileToSend, fileName);
+    formData.append("file", resizedBlob, fileName);
 
     try {
       const delayPromise = new Promise((resolve) => setTimeout(resolve, 2000));
@@ -549,9 +594,7 @@ const App = () => {
         setError(data.error || "Failed to analyze image");
       }
     } catch (err) {
-      setError(
-        "Could not connect to the AI server. Is the backend running at localhost:5000?"
-      );
+      setError("Could not connect to the AI server.");
     } finally {
       setLoading(false);
     }
