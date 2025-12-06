@@ -6,9 +6,10 @@ from PIL import Image
 import io
 import json
 import os
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
 from datetime import datetime
+from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
+
+from database import insert_history_record, get_all_history, delete_history_record, delete_all_history
 
 app = Flask(__name__)
 CORS(app)
@@ -17,14 +18,8 @@ MODEL_NAME_BASE = os.environ.get("MODEL_NAME", "fruit")
 MODEL_FILENAME = f'{MODEL_NAME_BASE}_model.h5'
 INDICES_FILENAME = f'{MODEL_NAME_BASE}_class_indices.json'
 
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
-
 MODEL_PATH = MODEL_FILENAME
 INDICES_PATH = INDICES_FILENAME
-
-client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-db = client['freshx_db']
-history_collection = db['history']
 
 model = None
 class_labels = {}
@@ -60,6 +55,8 @@ def prepare_image(image, target_size):
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    print("--- PREDICT ENDPOINT HIT ---")
+    
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
     
@@ -96,20 +93,20 @@ def predict():
                 **response_data,
                 "timestamp": datetime.now().isoformat()
             }
-            history_collection.insert_one(history_record)
+            insert_history_record(history_record)
             print("History saved successfully.")
         except (ConnectionFailure, ServerSelectionTimeoutError, OperationFailure) as db_e:
             print(f"Warning: Failed to save history to MongoDB (is it running?): {db_e}")
         
         return jsonify(response_data)
     except Exception as e:
-        print(f"Prediction Error: {e}")
+        print(f"Prediction Error Exception: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/history', methods=['GET'])
 def get_history():
     try:
-        history = list(history_collection.find({}, {'_id': 0}).sort('timestamp', -1))
+        history = get_all_history()
         return jsonify(history)
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
         print(f"History fetch error: {e}")
@@ -118,5 +115,26 @@ def get_history():
         print(f"General History Error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/history', methods=['DELETE'])
+def clear_all_history():
+    try:
+        result = delete_all_history()
+        return jsonify({'message': f'Deleted {result.deleted_count} records'}), 200
+    except Exception as e:
+        print(f"Delete All Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history/<item_id>', methods=['DELETE'])
+def delete_history_item(item_id):
+    try:
+        result = delete_history_record(item_id)
+        if result.deleted_count > 0:
+            return jsonify({'message': 'Deleted successfully'}), 200
+        else:
+            return jsonify({'error': 'Item not found'}), 404
+    except Exception as e:
+        print(f"Delete Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
+    app.run(host='0.0.0.0', debug=True, port=int(os.environ.get("PORT", 5000)))

@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start:db": "mkdir -p ../backend/data && mongod --dbpath ../backend/data",
     "start:backend": "cd ../backend && .venv/bin/python app.py",
     "start:frontend": "vite",
-    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run start:backend\" \"npm run start:frontend\"",
+    "dev": "concurrently -n \"DB,BACKEND,FRONTEND\" -c \"bgYellow.bold,bgBlue.bold,bgGreen.bold\" \"npm run start:db\" \"npm run start:backend\" \"npm run start:frontend\"",
     "build": "vite build",
     "lint": "eslint ."
   },

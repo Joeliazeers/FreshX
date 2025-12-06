@@ -9,23 +9,151 @@ import {
   History,
   Clock,
   FileText,
+  Cpu,
+  Video,
+  Camera,
+  Trash2,
+  ArrowLeft,
+  Download,
+  Search,
+  Filter,
+  DownloadCloud,
 } from "lucide-react";
+
+const ResultDetailCard = ({ modelUsed, result }) => {
+  const allClasses = [
+    { label: result.label, confidence: result.confidence },
+    {
+      label: result.is_fresh ? "Fresh Banana (Sim.)" : "Rotten Banana (Sim.)",
+      confidence: (100 - result.confidence) * 0.4,
+    },
+    {
+      label: result.is_fresh ? "Fresh Apple (Sim.)" : "Rotten Orange (Sim.)",
+      confidence: (100 - result.confidence) * 0.3,
+    },
+  ]
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 3);
+
+  return (
+    <div className="mt-6 p-4 bg-gray-800 rounded-xl border border-gray-700 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <h4 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
+        <Cpu className="w-4 h-4" /> INFERENCE BREAKDOWN (
+        {modelUsed.toUpperCase()} MODEL)
+      </h4>
+      <div className="space-y-3">
+        {allClasses.map((item, index) => (
+          <div key={index} className="flex flex-col">
+            <div className="flex justify-between text-sm text-white font-medium">
+              <span>{item.label}</span>
+              <span>{item.confidence.toFixed(1)}%</span>
+            </div>
+            <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden mt-1">
+              <div
+                className={`h-full transition-all duration-1000 ease-out ${
+                  item.label === result.label
+                    ? result.is_fresh
+                      ? "bg-emerald-500"
+                      : "bg-red-500"
+                    : "bg-gray-600"
+                }`}
+                style={{ width: `${item.confidence}%` }}
+              ></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const App = () => {
   const [activeTab, setActiveTab] = useState("scanner");
+
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+
+  const [installPrompt, setInstallPrompt] = useState(null);
 
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [videoStream, setVideoStream] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
+  const [scannerMode, setScannerMode] = useState("upload");
+
+  const API_URL = "http://localhost:5000";
+
   useEffect(() => {
     fetchHistory();
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    });
+
+    return () => stopCamera();
   }, []);
+
+  useEffect(() => {
+    if (isCameraActive && videoStream && videoRef.current) {
+      videoRef.current.srcObject = videoStream;
+      videoRef.current
+        .play()
+        .catch((e) => console.error("Error playing video:", e));
+    }
+  }, [isCameraActive, videoStream]);
+
+  const handleInstallClick = () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    installPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === "accepted") {
+        console.log("User accepted the install prompt");
+      }
+      setInstallPrompt(null);
+    });
+  };
+
+  const stopCamera = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach((track) => track.stop());
+      setVideoStream(null);
+    }
+    setIsCameraActive(false);
+  };
+
+  const startCamera = async () => {
+    stopCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 400, height: 300 },
+      });
+      setVideoStream(stream);
+      setIsCameraActive(true);
+      setFile(null);
+      setPreview(null);
+      setResult(null);
+      setError(null);
+    } catch (err) {
+      console.error("Error accessing camera: ", err);
+      setError("Could not access camera. Please check browser permissions.");
+      setIsCameraActive(false);
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -61,157 +189,395 @@ const App = () => {
     setPreview(null);
     setResult(null);
     setError(null);
+    stopCamera();
   };
 
   const fetchHistory = async () => {
     setLoadingHistory(true);
+    setHistoryError(null);
     try {
-      const response = await fetch("http://localhost:5000/history");
-      const data = await response.json();
-      if (response.ok) {
-        setHistory(data);
-      } else {
-        console.error("Error fetching history:", data.error);
+      const response = await fetch(`${API_URL}/history`);
+
+      if (!response.ok) {
+        setHistoryError(
+          `Database unavailable (Status: ${response.status}). Is MongoDB running?`
+        );
+        return;
       }
+
+      const data = await response.json();
+      setHistory(data);
     } catch (err) {
-      console.error("Failed to fetch history");
+      setHistoryError("Failed to connect to history. Is Backend/DB running?");
     } finally {
       setLoadingHistory(false);
     }
   };
 
+  const deleteHistoryItem = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/history/${id}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        setHistory((prev) => prev.filter((item) => item._id !== id));
+        if (selectedHistoryItem && selectedHistoryItem._id === id) {
+          setSelectedHistoryItem(null);
+        }
+      } else {
+        console.error("Failed to delete item");
+      }
+    } catch (err) {
+      console.error("Error deleting item:", err);
+    }
+  };
+
+  const clearAllHistory = async () => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete ALL history? This cannot be undone."
+      )
+    )
+      return;
+
+    try {
+      const response = await fetch(`${API_URL}/history`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        setHistory([]);
+        setSelectedHistoryItem(null);
+      } else {
+        console.error("Failed to clear history");
+      }
+    } catch (err) {
+      console.error("Error clearing history:", err);
+    }
+  };
+
+  const exportData = () => {
+    if (history.length === 0) return;
+
+    const headers = [
+      "Timestamp",
+      "Filename",
+      "Label",
+      "Is Fresh",
+      "Confidence",
+      "Model",
+    ];
+    const rows = history.map((item) => [
+      item.timestamp,
+      item.filename,
+      item.label,
+      item.is_fresh ? "Yes" : "No",
+      item.confidence.toFixed(2),
+      item.model_used,
+    ]);
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "freshx_history_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const switchTab = (tab) => {
     setActiveTab(tab);
+    if (tab === "history") {
+      fetchHistory();
+      setSelectedHistoryItem(null);
+    }
+    if (tab === "scanner") {
+      stopCamera();
+    }
   };
 
   const handlePrediction = async () => {
-    if (!file) return;
+    let fileToSend = null;
+    let fileName = "";
+
+    if (scannerMode === "upload" && file) {
+      fileToSend = file;
+      fileName = file.name;
+    } else if (scannerMode === "camera" && isCameraActive) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      fileToSend = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg")
+      );
+      fileName = "live_capture.jpg";
+
+      setPreview(canvas.toDataURL("image/jpeg"));
+      stopCamera();
+    }
+
+    if (!fileToSend) {
+      setError("Please upload an image or activate the camera first.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", fileToSend, fileName);
 
     try {
-      const response = await fetch("http://localhost:5000/predict", {
+      const delayPromise = new Promise((resolve) => setTimeout(resolve, 2000));
+      const fetchPromise = fetch(`${API_URL}/predict`, {
         method: "POST",
         body: formData,
       });
+
+      const [_, response] = await Promise.all([delayPromise, fetchPromise]);
 
       const data = await response.json();
 
       if (response.ok) {
         setResult(data);
+
         const newHistoryItem = {
-          filename: file.name,
+          _id: "temp-" + Date.now(),
+          filename: fileName,
           label: data.label,
           confidence: data.confidence,
           is_fresh: data.is_fresh,
           timestamp: new Date().toISOString(),
+          model_used: data.model_used || "fruit",
         };
         setHistory((prev) => [newHistoryItem, ...prev]);
       } else {
         setError(data.error || "Failed to analyze image");
       }
     } catch (err) {
-      setError("Could not connect to the AI server. Is the backend running?");
+      setError(
+        "Could not connect to the AI server. Is the backend running at localhost:5000?"
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const filteredHistory = history.filter((item) => {
+    const matchesSearch =
+      item.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.filename.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter =
+      filterStatus === "all" ||
+      (filterStatus === "fresh" && item.is_fresh) ||
+      (filterStatus === "rotten" && !item.is_fresh);
+    return matchesSearch && matchesFilter;
+  });
+
+  const modelIndicator = result
+    ? result.model_used
+    : history[0]
+    ? history[0].model_used
+    : "fruit";
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-emerald-500 selection:text-white pb-10">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <header className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center transform rotate-3">
+            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center transform rotate-3 shrink-0">
               <span className="font-bold text-gray-900 text-xl">F</span>
             </div>
             <h1 className="text-2xl font-bold tracking-tight">FreshX</h1>
           </div>
 
-          <div className="bg-gray-800 p-1 rounded-xl flex items-center">
-            <button
-              onClick={() => switchTab("scanner")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === "scanner"
-                  ? "bg-gray-700 text-white shadow-md"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              <ScanSearch className="w-4 h-4" />
-              Scanner
-            </button>
-            <button
-              onClick={() => switchTab("history")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === "history"
-                  ? "bg-gray-700 text-white shadow-md"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              <History className="w-4 h-4" />
-              History
-            </button>
+          <div className="flex items-center gap-3 w-full md:w-auto justify-center">
+            {installPrompt && (
+              <button
+                onClick={handleInstallClick}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-lg animate-bounce"
+              >
+                <DownloadCloud className="w-4 h-4" /> Install App
+              </button>
+            )}
+
+            <div className="bg-gray-800 p-1 rounded-xl flex items-center">
+              <button
+                onClick={() => switchTab("scanner")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === "scanner"
+                    ? "bg-gray-700 text-white shadow-md"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <ScanSearch className="w-4 h-4" />
+                Scanner
+              </button>
+              <button
+                onClick={() => switchTab("history")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === "history"
+                    ? "bg-gray-700 text-white shadow-md"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <History className="w-4 h-4" />
+                History
+              </button>
+            </div>
           </div>
         </header>
 
         <main className="flex flex-col items-center justify-center">
+          <canvas ref={canvasRef} style={{ display: "none" }}></canvas>
+
           {activeTab === "scanner" ? (
             <div className="w-full max-w-xl animate-in fade-in zoom-in duration-300">
-              <div className="text-center mb-8">
-                <h2 className="text-4xl font-extrabold mb-4 bg-clip-text text-transparent bg-linear-to-r from-white to-gray-400">
+              <div className="text-center mb-6">
+                <h2 className="text-3xl md:text-4xl font-extrabold mb-4 bg-clip-text text-transparent bg-linear-to-r from-white to-gray-400">
                   Is your fruit fresh?
                 </h2>
-                <p className="text-gray-400 text-lg">
-                  Upload an image of an Apple, Banana, or Orange and let our AI
-                  analyze its quality.
+                <p className="text-gray-400 text-base md:text-lg">
+                  Use the camera or upload a file to analyze quality.
                 </p>
               </div>
 
-              <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+              <div className="flex justify-end px-2 mb-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-800 text-emerald-400 border border-emerald-500/30 shadow-sm">
+                  <Cpu className="w-3 h-3" />
+                  Model: {modelIndicator.toUpperCase()}
+                </span>
+              </div>
+
+              <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-emerald-500 via-teal-500 to-blue-500 opacity-50"></div>
 
-                {!preview ? (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    onClick={triggerFileInput}
-                    className="border-2 border-dashed border-gray-600 rounded-2xl h-64 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-gray-800 transition-all duration-300 group"
+                <div className="flex justify-center mb-6 p-1 bg-gray-900 rounded-xl relative z-20 w-full">
+                  <button
+                    onClick={() => {
+                      setScannerMode("upload");
+                      stopCamera();
+                      resetSelection();
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      scannerMode === "upload"
+                        ? "bg-gray-700 text-white shadow-md"
+                        : "text-gray-400 hover:text-white"
+                    }`}
                   >
-                    <div className="bg-gray-700 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
-                      <Upload className="w-8 h-8 text-emerald-400" />
-                    </div>
-                    <p className="text-lg font-medium text-gray-300 group-hover:text-white">
-                      Click or drag image here
+                    <Upload className="w-4 h-4" />{" "}
+                    <span className="hidden sm:inline">File Upload</span>
+                    <span className="sm:hidden">Upload</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setScannerMode("camera");
+                      resetSelection();
+                      setScannerMode("camera");
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      scannerMode === "camera"
+                        ? "bg-gray-700 text-white shadow-md"
+                        : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <Camera className="w-4 h-4" />{" "}
+                    <span className="hidden sm:inline">Live Camera</span>
+                    <span className="sm:hidden">Camera</span>
+                  </button>
+                </div>
+
+                {scannerMode === "camera" && !isCameraActive && !result ? (
+                  <div className="border-2 border-dashed border-gray-600 rounded-2xl h-64 flex flex-col items-center justify-center text-center p-4">
+                    <Video className="w-12 h-12 text-red-500 mb-4" />
+                    <p className="text-lg font-medium text-gray-300">
+                      Camera Inactive
                     </p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Supports JPG, PNG
-                    </p>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      className="hidden"
+                    <button
+                      onClick={startCamera}
+                      className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <Camera className="w-4 h-4" /> Activate Camera
+                    </button>
+                  </div>
+                ) : scannerMode === "camera" && isCameraActive && !result ? (
+                  <div className="relative rounded-2xl overflow-hidden shadow-lg border border-gray-700 h-64 bg-gray-900 flex items-center justify-center">
+                    <video
+                      ref={videoRef}
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      playsInline
+                      muted
                     />
+                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
+                      <span className="text-white text-sm font-medium bg-red-600 px-3 py-1 rounded-full animate-pulse">
+                        LIVE
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <div className="relative">
                     <div className="relative rounded-2xl overflow-hidden shadow-lg border border-gray-700 h-64 bg-gray-900 flex items-center justify-center">
-                      <img
-                        src={preview}
-                        alt="Upload Preview"
-                        className="max-h-full max-w-full object-contain"
-                      />
-                      <button
-                        onClick={resetSelection}
-                        className="absolute top-3 right-3 bg-gray-900/80 hover:bg-red-500 text-white p-2 rounded-full transition-colors backdrop-blur-md"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
+                      {!preview ? (
+                        <div
+                          onDragOver={handleDragOver}
+                          onDrop={handleDrop}
+                          onClick={triggerFileInput}
+                          className="border-2 border-dashed border-gray-600 rounded-2xl h-64 w-full flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-gray-800 transition-all duration-300 group p-4 text-center"
+                        >
+                          <div className="bg-gray-700 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
+                            <Upload className="w-8 h-8 text-emerald-400" />
+                          </div>
+                          <p className="text-lg font-medium text-gray-300 group-hover:text-white">
+                            Click or drag image here
+                          </p>
+                          <p className="text-sm text-gray-500 mt-2">
+                            Supports JPG, PNG
+                          </p>
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileChange}
+                            accept="image/*"
+                            className="hidden"
+                          />
+                        </div>
+                      ) : (
+                        <img
+                          src={preview}
+                          alt="Upload Preview"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      )}
+
+                      {loading && (
+                        <div className="absolute inset-0 bg-gray-900/80 flex flex-col items-center justify-center z-20 transition-opacity duration-300">
+                          <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
+                          <p className="mt-4 text-gray-300">
+                            Analyzing Image...
+                          </p>
+                        </div>
+                      )}
+
+                      {(preview || result) && (
+                        <button
+                          onClick={resetSelection}
+                          className="absolute top-3 right-3 bg-gray-900/80 hover:bg-red-500 text-white p-2 rounded-full transition-colors backdrop-blur-md z-30"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -233,29 +599,29 @@ const App = () => {
                             : "bg-red-500/10 border-red-500/20"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-4">
+                          <div className="flex items-center gap-3 w-full sm:w-auto">
                             {result.is_fresh ? (
-                              <div className="p-2 bg-emerald-500 rounded-lg">
+                              <div className="p-2 bg-emerald-500 rounded-lg shrink-0">
                                 <CheckCircle className="w-6 h-6 text-white" />
                               </div>
                             ) : (
-                              <div className="p-2 bg-red-500 rounded-lg">
+                              <div className="p-2 bg-red-500 rounded-lg shrink-0">
                                 <AlertCircle className="w-6 h-6 text-white" />
                               </div>
                             )}
                             <div>
                               <h3 className="text-xl font-bold text-white">
                                 {result.is_fresh
-                                  ? "Fresh Fruit"
-                                  : "Rotten Fruit"}
+                                  ? "FRESH RESULT"
+                                  : "ROTTEN RESULT"}
                               </h3>
                               <p className="text-sm text-gray-400 capitalize">
                                 {result.label}
                               </p>
                             </div>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right w-full sm:w-auto">
                             <span className="text-3xl font-bold text-white">
                               {result.confidence.toFixed(1)}%
                             </span>
@@ -275,6 +641,11 @@ const App = () => {
                         </div>
                       </div>
 
+                      <ResultDetailCard
+                        modelUsed={modelIndicator}
+                        result={result}
+                      />
+
                       <button
                         onClick={resetSelection}
                         className="w-full mt-6 py-4 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-semibold transition-all"
@@ -285,9 +656,9 @@ const App = () => {
                   ) : (
                     <button
                       onClick={handlePrediction}
-                      disabled={!file || loading}
+                      disabled={(!isCameraActive && !file) || loading}
                       className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 shadow-lg ${
-                        !file
+                        !isCameraActive && !file
                           ? "bg-gray-800 text-gray-500 cursor-not-allowed"
                           : "bg-white text-gray-900 hover:bg-gray-100 hover:shadow-xl hover:-translate-y-1"
                       }`}
@@ -300,7 +671,9 @@ const App = () => {
                       ) : (
                         <>
                           <ScanSearch className="w-6 h-6" />
-                          Start Detection
+                          {scannerMode === "upload"
+                            ? "Start Detection"
+                            : "Capture & Detect"}
                         </>
                       )}
                     </button>
@@ -310,22 +683,154 @@ const App = () => {
             </div>
           ) : (
             <div className="w-full max-w-3xl animate-in fade-in slide-in-from-right-8 duration-300">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">
-                  Detection History
-                </h2>
-                <button
-                  onClick={fetchHistory}
-                  className="text-sm text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                >
-                  <History className="w-4 h-4" /> Refresh
-                </button>
+              <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-2xl font-bold text-white">
+                    Detection History
+                  </h2>
+                  <button
+                    onClick={fetchHistory}
+                    className="text-sm text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                  >
+                    <History className="w-4 h-4" /> Refresh
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <button
+                    onClick={exportData}
+                    disabled={history.length === 0}
+                    className="bg-gray-800 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                    title="Export CSV"
+                  >
+                    <Download className="w-4 h-4" />{" "}
+                    <span className="hidden sm:inline">Export</span>
+                  </button>
+                  <button
+                    onClick={clearAllHistory}
+                    disabled={history.length === 0}
+                    className="bg-red-500/10 text-red-500 hover:bg-red-500/20 px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />{" "}
+                    <span className="hidden sm:inline">Clear All</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Search & Filter Bar */}
+              <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 mb-4 flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Search items..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
+                </div>
+                <div className="relative w-full sm:w-40">
+                  <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer"
+                  >
+                    <option value="all">All Items</option>
+                    <option value="fresh">Fresh Only</option>
+                    <option value="rotten">Rotten Only</option>
+                  </select>
+                </div>
+              </div>
+
+              {historyError && (
+                <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-200 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  {historyError}
+                </div>
+              )}
 
               {loadingHistory ? (
                 <div className="flex flex-col items-center justify-center py-20 text-gray-500">
                   <Loader2 className="w-10 h-10 animate-spin mb-4" />
                   <p>Loading history...</p>
+                </div>
+              ) : selectedHistoryItem ? (
+                <div className="bg-gray-800/50 backdrop-blur border border-gray-700 rounded-3xl p-6 animate-in zoom-in-95 duration-300">
+                  <button
+                    onClick={() => setSelectedHistoryItem(null)}
+                    className="mb-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Back to List
+                  </button>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={`w-16 h-16 rounded-2xl shrink-0 flex items-center justify-center ${
+                          selectedHistoryItem.is_fresh
+                            ? "bg-emerald-500/10 text-emerald-500"
+                            : "bg-red-500/10 text-red-500"
+                        }`}
+                      >
+                        {selectedHistoryItem.is_fresh ? (
+                          <CheckCircle className="w-8 h-8" />
+                        ) : (
+                          <AlertCircle className="w-8 h-8" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold text-white">
+                          {selectedHistoryItem.label}
+                        </h3>
+                        <p className="text-gray-400 flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          {new Date(
+                            selectedHistoryItem.timestamp
+                          ).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteHistoryItem(selectedHistoryItem._id)}
+                      className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors w-full sm:w-auto flex justify-center"
+                      title="Delete Record"
+                    >
+                      <Trash2 className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="bg-gray-900 p-4 rounded-xl border border-gray-700">
+                      <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
+                        Confidence
+                      </span>
+                      <span className="text-2xl font-bold text-white">
+                        {selectedHistoryItem.confidence.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="bg-gray-900 p-4 rounded-xl border border-gray-700">
+                      <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
+                        Model Used
+                      </span>
+                      <span className="text-2xl font-bold text-white uppercase">
+                        {selectedHistoryItem.model_used}
+                      </span>
+                    </div>
+                    <div className="bg-gray-900 p-4 rounded-xl border border-gray-700 md:col-span-2">
+                      <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
+                        Filename
+                      </span>
+                      <span className="text-lg text-white truncate block">
+                        {selectedHistoryItem.filename}
+                      </span>
+                    </div>
+                  </div>
+
+                  <ResultDetailCard
+                    modelUsed={selectedHistoryItem.model_used}
+                    result={selectedHistoryItem}
+                  />
                 </div>
               ) : history.length === 0 ? (
                 <div className="text-center py-20 bg-gray-800/30 rounded-3xl border border-gray-700/50">
@@ -335,16 +840,22 @@ const App = () => {
                     Run a scan to see it appear here.
                   </p>
                 </div>
+              ) : filteredHistory.length === 0 ? (
+                <div className="text-center py-20 text-gray-500">
+                  <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No items match your search filters.</p>
+                </div>
               ) : (
-                <div className="space-y-4">
-                  {history.map((item, index) => (
+                <div className="space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar pr-2 pb-10">
+                  {filteredHistory.map((item, index) => (
                     <div
                       key={index}
-                      className="bg-gray-800/50 backdrop-blur border border-gray-700 rounded-2xl p-4 flex items-center justify-between hover:bg-gray-800 transition-colors"
+                      onClick={() => setSelectedHistoryItem(item)}
+                      className="bg-gray-800/50 backdrop-blur border border-gray-700 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between hover:bg-gray-800 transition-colors cursor-pointer group gap-4"
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-4 w-full sm:w-auto">
                         <div
-                          className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                          className={`w-12 h-12 rounded-xl shrink-0 flex items-center justify-center ${
                             item.is_fresh
                               ? "bg-emerald-500/10 text-emerald-500"
                               : "bg-red-500/10 text-red-500"
@@ -356,29 +867,45 @@ const App = () => {
                             <AlertCircle className="w-6 h-6" />
                           )}
                         </div>
-                        <div>
-                          <h3 className="font-bold text-white text-lg">
+                        <div className="overflow-hidden">
+                          <h3 className="font-bold text-white text-lg truncate">
                             {item.label}
                           </h3>
                           <div className="flex items-center gap-3 text-sm text-gray-400">
-                            <span className="flex items-center gap-1">
-                              <FileText className="w-3 h-3" />
-                              {item.filename && item.filename.length > 20
-                                ? item.filename.substring(0, 20) + "..."
+                            <span className="flex items-center gap-1 mr-4">
+                              <Cpu className="w-3 h-3 text-yellow-400" />
+                              {item.model_used.toUpperCase()}
+                            </span>
+                            <span className="flex items-center gap-1 truncate">
+                              <FileText className="w-3 h-3 shrink-0" />
+                              {item.filename && item.filename.length > 15
+                                ? item.filename.substring(0, 15) + "..."
                                 : item.filename}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <div className="font-bold text-xl text-white">
-                          {item.confidence.toFixed(1)}%
+                      <div className="text-right flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 border-gray-700 pt-3 sm:pt-0">
+                        <div className="flex flex-col items-start sm:items-end">
+                          <div className="font-bold text-xl text-white">
+                            {item.confidence.toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(item.timestamp).toLocaleDateString()}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-400 flex items-center justify-end gap-1 mt-1">
-                          <Clock className="w-3 h-3" />
-                          {new Date(item.timestamp).toLocaleDateString()}
-                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteHistoryItem(item._id);
+                          }}
+                          className="p-2 rounded-lg text-gray-500 hover:bg-red-500/20 hover:text-red-500 transition-all opacity-100 sm:opacity-0 group-hover:opacity-100"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
                   ))}
