@@ -80,4 +80,5 @@ log/
 *.log
 
 pw_git.txt
+pw_mongo.txt
 
