@@ -3,7 +3,7 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 
 # Configuration
-MONGO_URI = os.environ.get("mongodb+srv://joeliazeers:NQYOQzfJQDpOj29R@cluster0.9lar11c.mongodb.net/?appName=Cluster0", "mongodb://localhost:27017/")
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
 
 # Initialize Client
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
