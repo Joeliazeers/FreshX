@@ -57,10 +57,17 @@
 The project follows a decoupled Monorepo structure, deployed as two separate microservices:
 
 ```mermaid
-    User[User Device] -- HTTPS --> Frontend[Vercel (React App)]
-    Frontend -- REST API --> Backend[Railway (Flask API)]
-    Backend -- Inference --> Model[AI Model (.h5)]
-    Backend -- Read/Write --> DB[(MongoDB Atlas)]
+    flowchart LR
+    User["User Device"]
+    Frontend["Frontend (Vercel - React App)"]
+    Backend["Backend (Railway - Flask API)"]
+    Model["AI Model (.h5)"]
+    DB["MongoDB Atlas"]
+
+    User -- "HTTPS" --> Frontend
+    Frontend -- "REST API" --> Backend
+    Backend -- "Inference" --> Model
+    Backend -- "Read/Write" --> DB
 ```
 
 &nbsp;
