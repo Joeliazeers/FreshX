@@ -1,8 +1,1 @@
-{
-  "freshapples": 0,
-  "freshbanana": 1,
-  "freshoranges": 2,
-  "rottenapples": 3,
-  "rottenbanana": 4,
-  "rottenoranges": 5
-}
+{"freshapples": 0, "freshbananas": 1, "freshoranges": 2, "rottenapples": 3, "rottenbananas": 4, "rottenoranges": 5}

@@ -1,131 +1,137 @@
-# 🍏 **FreshX: AI-Powered Fruit Freshness Scanner** 🍎
+# FreshX - AI-Powered Fruit Freshness Detector 🍎🍌🍊
 
-**FreshX** is a full-stack application that uses a custom-trained Convolutional Neural Network (CNN) to classify whether an image of a common fruit (Apple, Banana, Orange) is **Fresh** or **Rotten**. It provides instant classification results and tracks all detection history using MongoDB.
+![FreshX Banner](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-Vite-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![TensorFlow](https://img.shields.io/badge/TensorFlow-Lite-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 
-✨ **Features**
+**FreshX** is a full-stack web application designed to classify the quality of fruits (Fresh vs. Rotten) in real-time. Leveraging deep learning and a microservices architecture, it provides an instant analysis tool for food quality control.
 
-- ⚡ **Real-Time Classification**: Upload an image via drag-and-drop or file selection and get an instant freshness prediction.
+## 🔗 Live Demo
 
-- 🧠 **Custom CNN Model**: The Python backend utilizes TensorFlow/Keras, trained on a comprehensive Kaggle dataset, to achieve high-confidence results.
+- [👉 FreshX (Deployed Web)](https://www.freshx.site/)
+  _Note: The backend and frontend are hosted on a free tier, so the first request might take 30-60 seconds to wake up._
 
-- 📂 **Persistent History**: All prediction results, including confidence scores and labels, are saved to a MongoDB database.
+&nbsp;
 
-- 📊 **History Tab**: A dedicated tab in the frontend allows users to view a chronological log of all previous scans.
+## 🚀 Features
 
-- 🎨 **Modern UI**: Built with React and Tailwind CSS for a dark-themed, responsive, and intuitive user experience.
+- **🤖 AI Inference Engine:** Uses a custom-trained Convolutional Neural Network (CNN) to detect freshness with high confidence.
+- **📸 Dual Scanning:** Supports both **Live Camera Capture** and **File Upload**.
+- **📊 Smart Analytics:** Visualizes detection history with pie charts and trend lines.
+- **☁️ Cloud Sync:** Automatically saves all detection results to a MongoDB cloud database.
+- **📱 Responsive Design:** Fully optimized for mobile and desktop usage using Tailwind CSS.
 
-- 🔗 **Unified Development**: Uses `concurrently` to start both the Python Flask API and the React development server with a single command.
+&nbsp;
 
-‎
+## 🛠 Tech Stack
 
-🛠️ **Technology Stack**
+#### **Frontend (Client)**
 
-| **Component**     | **Technology**            | **Role**                                                          |
-| ----------------- | ------------------------- | ----------------------------------------------------------------- |
-| **Frontend**      | `React.js + Tailwind CSS` | Single-page user interface (Scanner & History Tabs)               |
-| **Backend (API)** | `Flask`                   | Lightweight Python server to handle image uploads and predictions |
-| **AI/ML**         | `TensorFlow / Keras`      | Loads and runs the `fruit_model.h5` CNN model                     |
-| **Database**      | `MongoDB`                 | Stores all historical prediction data                             |
-| **Development**   | `concurrently` `NPM`      | `Starts both the Flask and Vite servers simultaneously`           |
+- **Framework:** React 18 (Vite)
+- **Styling:** Tailwind CSS, Lucide React Icons
+- **Data Visualization:** Recharts
+- **Hosting:** Vercel
 
-‎
+#
 
-🚀 **Setup and Installation**
+#### **Backend (Server)**
 
-Follow these steps to get the development environment running locally.
+- **Framework:** Flask (Python)
+- **AI Engine:** TensorFlow (CPU), Keras, NumPy, Pillow
+- **Server:** Gunicorn
+- **Hosting:** Railway
 
-‎
+#
 
-**Prerequisites**
+#### **Database**
 
-- **Python 3.8+** and `pip`
+- **Storage:** MongoDB Atlas (Cloud)
+- **Driver:** PyMongo
 
-- **Node.js & npm**
+&nbsp;
 
-- **MongoDB Server**: Must be running locally on the default port (`27017`).
+## 🏗 System Architecture
 
-‎
+The project follows a decoupled Monorepo structure, deployed as two separate microservices:
 
-**1. Backend Setup (AI Model & API)**
-
-Navigate to the `backend` directory, create a virtual environment, and install dependencies.
-
-```
-# Navigate to the backend directory
-cd backend
-
-# Create and activate the Python virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # Use '.venv\\Scripts\\python.exe app.py' on Windows
-
-# Install Python dependencies (Flask, TensorFlow, PyMongo, etc.)
-pip install -r requirements.txt
-
-# --- CRITICAL: Train the Model ---
-# This step creates the required 'fruit_model.h5' and 'class_indices.json' files.
-# Ensure your dataset is located at the path defined in train_model.py
-python train_model.py
-
-# Deactivate the environment
-deactivate
+```mermaid
+    User[User Device] -- HTTPS --> Frontend[Vercel (React App)]
+    Frontend -- REST API --> Backend[Railway (Flask API)]
+    Backend -- Inference --> Model[AI Model (.h5)]
+    Backend -- Read/Write --> DB[(MongoDB Atlas)]
 ```
 
-‎
+&nbsp;
 
-**2. Frontend Setup (React & Development Tools)**
+## ⚙️ Local Installation Guide
 
-Navigate to the `frontend` directory and install Node dependencies, including `concurrently`.
+Follow these steps to run the project on your local machine.
+&nbsp;
 
-```
-# Navigate to the frontend directory
-cd ../frontend
+#### 1. Clone the Repository
 
-# Install Node dependencies
-npm install
-
-# Install concurrently for combined start-up
-npm install concurrently
+```markdown
+➤ git clone https://github.com/Joeliazeers/FreshX.git
+➤ cd freshx
 ```
 
-‎
+#### 2. Backend Setup
 
-**3. Run the Application**
+```markdown
+1. Create a virtual environment
+   ➤ python -m venv .venv
 
-From the `frontend` directory, run the main development script. This will automatically start the Python Flask server and the React Vite server.
+2. Activate the environment
+   Windows:
+   ➤ .venv\Scripts\activate
+   Mac/Linux:
+   ➤ source .venv/bin/activate
+
+3. Install dependencies
+   ➤ pip install -r requirements.txt
+
+4. Set your Database Connection (Replace with your actual string)
+   Windows PowerShell:
+   ➤ $env:MONGO_URI="mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/freshx_db"
+   Mac/Terminal:
+   ➤ export MONGO_URI="mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/freshx_db"
+
+5. Run the Server
+   ➤ python app.py
+```
+
+#### 3. Frontend Setup
 
 ```
-npm run dev
+➤ cd frontend
+
+1. Install Node modules
+➤ npm install
+
+2. Configure Local API Link
+➤ Create a file named .env.local inside the /frontend folder
+Add this line:
+➤ VITE_API_URL=http://localhost:5000
+
+3. Run the Client
+➤ npm run dev
 ```
 
-The application should now be available at `http://localhost:5173/`.
+&nbsp;
 
-‎
+## 📡 API Documentation
 
-🧑‍💻 **Usage**
-‎
+| Method     | Endpoint        | Description                                            |
+| :--------- | :-------------- | :----------------------------------------------------- |
+| **POST**   | `/predict`      | Analyzes uploaded image for freshness.                 |
+| **GET**    | `/history`      | Fetches the list of all past predictions from MongoDB. |
+| **DELETE** | `/history/<id>` | Deletes a single history record by ID.                 |
+| **DELETE** | `/history`      | Clears the entire database history.                    |
 
-**Scanner Tab**
+&nbsp;
 
-‎‎ 1. Access the app at `http://localhost:5173/`.
+## 📄 License
 
-‎ 2. Drag and drop or click to upload a fruit image (Apple, Banana, or Orange).
-
-‎ 3. Click "**Start Detection**".
-
-‎ 4. The result will show the predicted label (e.g., "Fresh Apple"), the **Fresh/Rotten** status, and the confidence percentage.
-
-‎
-
-**History Tab**
-
-‎ 1. Click the "**History**" tab in the header.
-
-‎ 2. The application fetches all past prediction results from the MongoDB database, showing the outcome, confidence, and timestamp.
-
-‎ 3. Use the "**Refresh**" button to manually update the list with the latest data from the database.
-
-‎
-
-📜 **License**
-
-This project is licensed under the **MIT License**. See the `LICENSE.md` file for details.
+This project is created for educational purposes and assignment submission.
