@@ -18,50 +18,233 @@ import {
   Search,
   Filter,
   DownloadCloud,
+  PieChart as PieIcon,
+  TrendingUp,
 } from "lucide-react";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  AreaChart,
+  Area,
+} from "recharts";
+
+const COLORS = ["#10b981", "#ef4444", "#3b82f6", "#f59e0b"];
 
 const ResultDetailCard = ({ modelUsed, result }) => {
   const allClasses = [
-    { label: result.label, confidence: result.confidence },
+    { name: result.label, value: result.confidence },
     {
-      label: result.is_fresh ? "Fresh Banana (Sim.)" : "Rotten Banana (Sim.)",
-      confidence: (100 - result.confidence) * 0.4,
+      name: result.is_fresh ? "Rotten (Sim.)" : "Fresh (Sim.)",
+      value: 100 - result.confidence,
     },
-    {
-      label: result.is_fresh ? "Fresh Apple (Sim.)" : "Rotten Orange (Sim.)",
-      confidence: (100 - result.confidence) * 0.3,
-    },
-  ]
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 3);
+  ];
+
+  const dataForChart = allClasses;
 
   return (
-    <div className="mt-6 p-4 bg-gray-800 rounded-xl border border-gray-700 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <h4 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-2">
-        <Cpu className="w-4 h-4" /> INFERENCE BREAKDOWN (
-        {modelUsed.toUpperCase()} MODEL)
-      </h4>
-      <div className="space-y-3">
-        {allClasses.map((item, index) => (
-          <div key={index} className="flex flex-col">
-            <div className="flex justify-between text-sm text-white font-medium">
-              <span>{item.label}</span>
-              <span>{item.confidence.toFixed(1)}%</span>
-            </div>
-            <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden mt-1">
-              <div
-                className={`h-full transition-all duration-1000 ease-out ${
-                  item.label === result.label
-                    ? result.is_fresh
-                      ? "bg-emerald-500"
-                      : "bg-red-500"
-                    : "bg-gray-600"
-                }`}
-                style={{ width: `${item.confidence}%` }}
-              ></div>
+    <div className="mt-6 p-6 bg-gray-800 rounded-xl border border-gray-700 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-between mb-6">
+        <h4 className="text-sm font-semibold text-gray-400 flex items-center gap-2">
+          <Cpu className="w-4 h-4" /> INFERENCE BREAKDOWN
+        </h4>
+        <span className="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300 border border-gray-600 uppercase">
+          {modelUsed} MODEL
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
+        <div className="h-48 w-full relative">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={dataForChart}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+                stroke="none"
+              >
+                {dataForChart.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={
+                      index === 0
+                        ? result.is_fresh
+                          ? "#10b981"
+                          : "#ef4444"
+                        : "#374151"
+                    }
+                  />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  borderColor: "#374151",
+                  color: "#fff",
+                }}
+                itemStyle={{ color: "#fff" }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-center">
+              <span className="text-2xl font-bold text-white block">
+                {result.confidence.toFixed(0)}%
+              </span>
+              <span className="text-xs text-gray-400 uppercase">Certainty</span>
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-gray-700">
+            <span className="text-gray-400 text-sm">Primary Detection</span>
+            <span
+              className={`font-bold ${
+                result.is_fresh ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {result.label}
+            </span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs text-gray-500 uppercase tracking-wider">
+              <span>Confidence Distribution</span>
+            </div>
+            <div className="w-full bg-gray-700 h-3 rounded-full overflow-hidden flex">
+              <div
+                className={`h-full ${
+                  result.is_fresh ? "bg-emerald-500" : "bg-red-500"
+                }`}
+                style={{ width: `${result.confidence}%` }}
+              ></div>
+              <div
+                className="h-full bg-gray-600"
+                style={{ width: `${100 - result.confidence}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>{result.confidence.toFixed(1)}% Match</span>
+              <span>{(100 - result.confidence).toFixed(1)}% Noise</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HistoryAnalytics = ({ history }) => {
+  if (history.length < 2) return null;
+
+  const freshCount = history.filter((h) => h.is_fresh).length;
+  const rottenCount = history.length - freshCount;
+
+  const pieData = [
+    { name: "Fresh", value: freshCount },
+    { name: "Rotten", value: rottenCount },
+  ];
+
+  const lineData = [...history]
+    .reverse()
+    .slice(-10)
+    .map((h, i) => ({
+      name: i + 1,
+      confidence: h.confidence,
+      status: h.is_fresh ? "Fresh" : "Rotten",
+    }));
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="bg-gray-800/50 backdrop-blur border border-gray-700 rounded-xl p-4">
+        <h4 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <PieIcon className="w-4 h-4 text-emerald-400" /> QUALITY RATIO
+        </h4>
+        <div className="h-48">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                innerRadius={40}
+                outerRadius={70}
+                paddingAngle={5}
+                dataKey="value"
+                stroke="none"
+              >
+                <Cell fill="#10b981" />
+                <Cell fill="#ef4444" />
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  borderColor: "#374151",
+                  borderRadius: "8px",
+                  color: "#fff",
+                }}
+              />
+              <Legend verticalAlign="bottom" height={36} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-gray-800/50 backdrop-blur border border-gray-700 rounded-xl p-4">
+        <h4 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-blue-400" /> CONFIDENCE TREND
+        </h4>
+        <div className="h-48">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={lineData}>
+              <defs>
+                <linearGradient id="colorConf" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                vertical={false}
+                stroke="#374151"
+              />
+              <XAxis dataKey="name" hide />
+              <YAxis
+                domain={[0, 100]}
+                hide
+                label={{ value: "%", angle: -90, position: "insideLeft" }}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  borderColor: "#374151",
+                  borderRadius: "8px",
+                  color: "#fff",
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="confidence"
+                stroke="#3b82f6"
+                strokeWidth={3}
+                fillOpacity={1}
+                fill="url(#colorConf)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
@@ -716,6 +899,9 @@ const App = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Added: Charting Component for History Trends */}
+              <HistoryAnalytics history={filteredHistory} />
 
               {/* Search & Filter Bar */}
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 mb-4 flex flex-col sm:flex-row gap-3">

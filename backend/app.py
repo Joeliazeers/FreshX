@@ -9,11 +9,13 @@ import os
 from datetime import datetime
 from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
 
+# Import database functions
 from database import insert_history_record, get_all_history, delete_history_record, delete_all_history
 
 app = Flask(__name__)
 CORS(app)
 
+# --- MODEL CONFIGURATION ---
 MODEL_NAME_BASE = os.environ.get("MODEL_NAME", "fruit") 
 MODEL_FILENAME = f'{MODEL_NAME_BASE}_model.h5'
 INDICES_FILENAME = f'{MODEL_NAME_BASE}_class_indices.json'
