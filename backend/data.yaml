@@ -1,0 +1,21 @@
+train: ./train/images
+val: ./valid/images
+test: ./test/images
+
+nc: 6
+names:
+  [
+    "fresh apple",
+    "fresh banana",
+    "fresh orange",
+    "rotten banana",
+    "rotten orange",
+    "rotten apple",
+  ]
+
+roboflow:
+  workspace: alrz-nt-wcyue
+  project: fresh-and-rotten-fruits-aa5ae
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/alrz-nt-wcyue/fresh-and-rotten-fruits-aa5ae/dataset/3

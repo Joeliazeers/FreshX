@@ -1,0 +1,6 @@
+flask
+flask-cors
+ultralytics
+pillow
+pymongo[srv]
+gunicorn
