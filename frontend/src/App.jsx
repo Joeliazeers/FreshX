@@ -34,6 +34,20 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+
+// --- CSS for the Sci-Fi Scanner Animation ---
+const scannerStyles = `
+  @keyframes scan {
+    0% { top: 0%; opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+  .animate-scan {
+    animation: scan 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+`;
+
 const resizeImageAndGetBlob = (file, maxWidth, maxHeight) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -73,7 +87,7 @@ const resizeImageAndGetBlob = (file, maxWidth, maxHeight) => {
     reader.onerror = () => resolve(file);
   });
 };
-const COLORS = ["#10b981", "#ef4444", "#3b82f6", "#f59e0b"];
+
 const ResultDetailCard = ({ modelUsed, result }) => {
   const allClasses = [
     { name: result.label, value: result.confidence },
@@ -176,6 +190,7 @@ const ResultDetailCard = ({ modelUsed, result }) => {
     </div>
   );
 };
+
 const HistoryAnalytics = ({ history }) => {
   if (history.length < 2) return null;
   const freshCount = history.filter((h) => h.is_fresh).length;
@@ -274,6 +289,7 @@ const HistoryAnalytics = ({ history }) => {
     </div>
   );
 };
+
 const App = () => {
   const [activeTab, setActiveTab] = useState("scanner");
   const [history, setHistory] = useState([]);
@@ -283,23 +299,27 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [installPrompt, setInstallPrompt] = useState(null);
+
+  // File Upload
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Camera
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [videoStream, setVideoStream] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  // --- LIVE SCANNING STATES ---
-  const [isScanning, setIsScanning] = useState(false);
-  const [bestResult, setBestResult] = useState(null);
-  const scanIntervalRef = useRef(null);
-  // ----------------------------
+
+  // Results & Loading
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const fileInputRef = useRef(null);
   const [scannerMode, setScannerMode] = useState("upload");
+
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
   useEffect(() => {
     fetchHistory();
     window.addEventListener("beforeinstallprompt", (e) => {
@@ -308,10 +328,9 @@ const App = () => {
     });
     return () => {
       stopCamera();
-      // Clean up any pending timeout/interval
-      if (scanIntervalRef.current) clearTimeout(scanIntervalRef.current);
     };
   }, []);
+
   useEffect(() => {
     if (isCameraActive && videoStream && videoRef.current) {
       videoRef.current.srcObject = videoStream;
@@ -320,6 +339,7 @@ const App = () => {
         .catch((e) => console.error("Error playing video:", e));
     }
   }, [isCameraActive, videoStream]);
+
   const handleInstallClick = () => {
     if (!installPrompt) return;
     installPrompt.prompt();
@@ -330,83 +350,16 @@ const App = () => {
       setInstallPrompt(null);
     });
   };
-  const stopCamera = () => {
-    if (videoStream) {
-      videoStream.getTracks().forEach((track) => track.stop());
-      setVideoStream(null);
-    }
-    setIsCameraActive(false);
-  };
-  // --- RECURSIVE CAPTURE FUNCTION (OPTIMIZED FOR SPEED) ---
-  const captureAndScanFrame = async () => {
-    // 1. Safety Checks
-    if (!videoRef.current || !canvasRef.current) {
-      // If camera isn't ready yet, retry in 100ms
-      if (scanIntervalRef.current) {
-        scanIntervalRef.current = setTimeout(captureAndScanFrame, 100);
-      }
-      return;
-    }
-    // 2. Capture Frame (Low Res for AI Speed)
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    // Safety check for video dimensions
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      scanIntervalRef.current = setTimeout(captureAndScanFrame, 100);
-      return;
-    }
-    // Scale down to 320px width (plenty for YOLO, much faster upload)
-    const AI_WIDTH = 320;
-    const scaleFactor = AI_WIDTH / video.videoWidth;
-    const AI_HEIGHT = video.videoHeight * scaleFactor;
-    canvas.width = AI_WIDTH;
-    canvas.height = AI_HEIGHT;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    // 3. Convert to Blob (Lower Quality JPEG)
-    const blob = await new Promise(
-      (resolve) => canvas.toBlob(resolve, "image/jpeg", 0.6) // 60% quality = fast upload
-    );
-    if (!blob) {
-      scanIntervalRef.current = setTimeout(captureAndScanFrame, 100);
-      return;
-    }
-    const fileName = "live_scan.jpg";
-    const formData = new FormData();
-    formData.append("file", blob, fileName);
-    formData.append("save", "false"); // Don't save to DB yet
-    // 4. Send to YOLO & Wait for Reply
+
+  // --- NEW: Manual Camera Logic ---
+  const startCamera = async () => {
     try {
-      const response = await fetch(`${API_URL}/predict`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setResult(data);
-        // Track the "Best" result seen so far
-        setBestResult((prevBest) => {
-          if (!prevBest || data.confidence > prevBest.confidence) {
-            return { ...data, blob: blob };
-          }
-          return prevBest;
-        });
-      }
-    } catch (err) {
-      console.log("Network glitch/busy, skipping frame...");
-    } finally {
-      if (videoRef.current && videoRef.current.srcObject) {
-        scanIntervalRef.current = setTimeout(captureAndScanFrame, 200);
-      }
-    }
-  };
-  const startLiveScan = async () => {
-    try {
+      // NOTE: Removed setLoading(true) here so animation doesn't start!
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment",
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
       });
       setVideoStream(stream);
@@ -415,39 +368,90 @@ const App = () => {
       setFile(null);
       setPreview(null);
       setResult(null);
-      setBestResult(null);
       setError(null);
-      setIsScanning(true);
-      scanIntervalRef.current = setTimeout(() => {
-        captureAndScanFrame();
-      }, 1000);
     } catch (err) {
       console.error("Error accessing camera: ", err);
       setError("Could not access camera. Please check browser permissions.");
       setIsCameraActive(false);
     }
   };
-  const stopLiveScan = async () => {
-    if (scanIntervalRef.current) clearTimeout(scanIntervalRef.current);
-    scanIntervalRef.current = null;
-    setIsScanning(false);
+
+  const stopCamera = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach((track) => track.stop());
+      setVideoStream(null);
+    }
+    setIsCameraActive(false);
+  };
+
+  const captureSnapshot = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    // 1. Setup Canvas
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    // Ensure we capture the resolution of the video feed
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // 2. Pause video immediately to give "Snapshot" feedback
+    video.pause();
+
+    // 3. Convert to Blob
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.9)
+    );
+
+    // 4. Stop Camera Stream
     stopCamera();
-    if (bestResult && bestResult.confidence > 0) {
-      setLoading(true);
-      try {
-        const formData = new FormData();
-        formData.append("file", bestResult.blob, "best_shot.jpg");
-        formData.append("save", "true");
-        await fetch(`${API_URL}/predict`, { method: "POST", body: formData });
-        setResult(bestResult);
-      } catch (e) {
-        console.error("Failed to save best result", e);
-        setError("Failed to save the result.");
-      } finally {
-        setLoading(false);
+
+    // 5. Send to API
+    analyzeImage(blob, "camera_snapshot.jpg");
+  };
+
+  // --- SHARED ANALYSIS LOGIC ---
+  const analyzeImage = async (imageBlob, filename) => {
+    setLoading(true); // Triggers the animation HERE (when analyzing)
+    setError(null);
+
+    const formData = new FormData();
+    formData.append("file", imageBlob, filename);
+    formData.append("save", "true");
+
+    try {
+      const response = await fetch(`${API_URL}/predict`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult(data);
+        const newHistoryItem = {
+          _id: "temp-" + Date.now(),
+          filename: filename,
+          label: data.label,
+          confidence: data.confidence,
+          is_fresh: data.is_fresh,
+          timestamp: new Date().toISOString(),
+          model_used: data.model_used || "YOLO",
+        };
+        setHistory((prev) => [newHistoryItem, ...prev]);
+      } else {
+        setError(data.error || "Failed to analyze image");
       }
+    } catch (err) {
+      setError("Could not connect to the AI server.");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // --- FILE HANDLING ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
@@ -457,11 +461,28 @@ const App = () => {
       setError(null);
     }
   };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
   const handleDragOver = (e) => {
     e.preventDefault();
+    e.stopPropagation();
   };
+
   const handleDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
       setFile(droppedFile);
@@ -470,19 +491,28 @@ const App = () => {
       setError(null);
     }
   };
+
   const triggerFileInput = () => {
     fileInputRef.current.click();
   };
+
   const resetSelection = () => {
     setFile(null);
     setPreview(null);
     setResult(null);
     setError(null);
-    setBestResult(null);
     stopCamera();
-    if (scanIntervalRef.current) clearTimeout(scanIntervalRef.current);
-    setIsScanning(false);
   };
+
+  const handlePrediction = async () => {
+    if (!file) {
+      setError("Please upload an image first.");
+      return;
+    }
+    const resized = await resizeImageAndGetBlob(file, 800, 800);
+    analyzeImage(resized, file.name);
+  };
+
   const fetchHistory = async () => {
     setLoadingHistory(true);
     setHistoryError(null);
@@ -502,6 +532,7 @@ const App = () => {
       setLoadingHistory(false);
     }
   };
+
   const deleteHistoryItem = async (id) => {
     try {
       const response = await fetch(`${API_URL}/history/${id}`, {
@@ -519,6 +550,7 @@ const App = () => {
       console.error("Error deleting item:", err);
     }
   };
+
   const clearAllHistory = async () => {
     if (
       !window.confirm(
@@ -540,6 +572,7 @@ const App = () => {
       console.error("Error clearing history:", err);
     }
   };
+
   const exportData = () => {
     if (history.length === 0) return;
     const headers = [
@@ -569,57 +602,19 @@ const App = () => {
     link.click();
     document.body.removeChild(link);
   };
+
   const switchTab = (tab) => {
     setActiveTab(tab);
     if (tab === "history") {
       fetchHistory();
       setSelectedHistoryItem(null);
       stopCamera();
-      if (scanIntervalRef.current) clearTimeout(scanIntervalRef.current);
-      setIsScanning(false);
     }
     if (tab === "scanner") {
       stopCamera();
     }
   };
-  const handlePrediction = async () => {
-    if (!file) {
-      setError("Please upload an image first.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    const formData = new FormData();
-    formData.append("file", file, file.name);
-    formData.append("save", "true"); // Always save uploads
-    try {
-      const response = await fetch(`${API_URL}/predict`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setResult(data);
-        // Optimistic UI update for history
-        const newHistoryItem = {
-          _id: "temp-" + Date.now(),
-          filename: file.name,
-          label: data.label,
-          confidence: data.confidence,
-          is_fresh: data.is_fresh,
-          timestamp: new Date().toISOString(),
-          model_used: data.model_used || "YOLO",
-        };
-        setHistory((prev) => [newHistoryItem, ...prev]);
-      } else {
-        setError(data.error || "Failed to analyze image");
-      }
-    } catch (err) {
-      setError("Could not connect to the AI server.");
-    } finally {
-      setLoading(false);
-    }
-  };
+
   const filteredHistory = history.filter((item) => {
     const matchesSearch =
       item.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -630,13 +625,17 @@ const App = () => {
       (filterStatus === "rotten" && !item.is_fresh);
     return matchesSearch && matchesFilter;
   });
+
   const modelIndicator = result
     ? result.model_used
     : history[0]
     ? history[0].model_used
     : "fruit";
+
   return (
     <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-emerald-500 selection:text-white pb-10">
+      <style>{scannerStyles}</style>
+
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <header className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
           <div className="flex items-center gap-2">
@@ -732,66 +731,73 @@ const App = () => {
                     <span className="sm:hidden">Camera</span>
                   </button>
                 </div>
-                {scannerMode === "camera" ? (
-                  isCameraActive ? (
-                    <div className="relative rounded-2xl overflow-hidden shadow-lg border border-gray-700 h-64 bg-gray-900 flex items-center justify-center">
-                      <video
-                        ref={videoRef}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        autoPlay
-                        playsInline
-                        muted
-                      />
-                      {result && result.heatmap_b64 && (
+
+                <div className="relative rounded-2xl overflow-hidden shadow-lg border border-gray-700 h-64 bg-gray-900 flex items-center justify-center">
+                  {scannerMode === "camera" ? (
+                    isCameraActive ? (
+                      <>
+                        <video
+                          ref={videoRef}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          autoPlay
+                          playsInline
+                          muted
+                        />
+                        <div className="absolute bottom-4 z-30">
+                          {/* MANUAL CAPTURE BUTTON */}
+                          <button
+                            onClick={captureSnapshot}
+                            className="bg-white text-gray-900 rounded-full px-6 py-2 font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                          >
+                            <Camera className="w-5 h-5 text-red-500" /> Capture
+                            & Analyze
+                          </button>
+                        </div>
+                      </>
+                    ) : result ? (
+                      <div className="relative w-full h-full flex items-center justify-center">
                         <img
                           src={`data:image/jpeg;base64,${result.heatmap_b64}`}
-                          alt="YOLO Detection"
-                          className="absolute inset-0 w-full h-full object-cover z-20 opacity-90"
+                          alt="Best Captured Shot"
+                          className="max-h-full max-w-full object-contain"
                         />
-                      )}
-                      <div className="absolute top-2 left-2 z-30">
-                        <span className="text-white text-xs font-bold bg-red-600 px-2 py-1 rounded animate-pulse">
-                          LIVE SCANNING
-                        </span>
+                        <button
+                          onClick={resetSelection}
+                          className="absolute top-3 right-3 bg-gray-900/80 hover:bg-red-500 text-white p-2 rounded-full transition-colors backdrop-blur-md z-30"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
                       </div>
-                    </div>
-                  ) : result ? (
-                    <div className="relative rounded-2xl overflow-hidden shadow-lg border border-gray-700 h-64 bg-gray-900 flex items-center justify-center">
-                      <img
-                        src={`data:image/jpeg;base64,${result.heatmap_b64}`}
-                        alt="Best Captured Shot"
-                        className="max-h-full max-w-full object-contain"
-                      />
-                      <button
-                        onClick={resetSelection}
-                        className="absolute top-3 right-3 bg-gray-900/80 hover:bg-red-500 text-white p-2 rounded-full transition-colors backdrop-blur-md z-30"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
+                    ) : (
+                      // CAMERA START STATE (FIXED: SOLID BORDER, NO DASH)
+                      <div className="w-full h-full rounded-2xl border border-gray-700 bg-gray-900 flex flex-col items-center justify-center text-center p-4">
+                        <Video className="w-12 h-12 text-gray-600 mb-4" />
+                        <p className="text-lg font-medium text-gray-400">
+                          Camera Ready
+                        </p>
+                        <button
+                          onClick={startCamera}
+                          className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 text-white"
+                        >
+                          <Camera className="w-4 h-4" /> Start Camera
+                        </button>
+                      </div>
+                    )
                   ) : (
-                    <div className="border-2 border-dashed border-gray-600 rounded-2xl h-64 flex flex-col items-center justify-center text-center p-4">
-                      <Video className="w-12 h-12 text-red-500 mb-4" />
-                      <p className="text-lg font-medium text-gray-300">
-                        Camera Ready
-                      </p>
-                      <button
-                        onClick={startLiveScan}
-                        className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                      >
-                        <Camera className="w-4 h-4" /> Start Live Scan
-                      </button>
-                    </div>
-                  )
-                ) : (
-                  <div className="relative">
-                    <div className="relative rounded-2xl overflow-hidden shadow-lg border border-gray-700 h-64 bg-gray-900 flex items-center justify-center">
+                    // MODE: UPLOAD (FIXED: CENTERED PREVIEW)
+                    <div className="relative w-full h-full flex items-center justify-center">
                       {!preview ? (
                         <div
+                          onDragEnter={handleDragEnter}
+                          onDragLeave={handleDragLeave}
                           onDragOver={handleDragOver}
                           onDrop={handleDrop}
                           onClick={triggerFileInput}
-                          className="border-2 border-dashed border-gray-600 rounded-2xl h-64 w-full flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-gray-800 transition-all duration-300 group p-4 text-center"
+                          className={`border-2 border-dashed rounded-2xl w-full h-full flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group p-4 text-center ${
+                            isDragging
+                              ? "border-emerald-500 bg-emerald-500/10"
+                              : "border-gray-600 hover:border-emerald-500 hover:bg-gray-800"
+                          }`}
                         >
                           <div className="bg-gray-700 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
                             <Upload className="w-8 h-8 text-emerald-400" />
@@ -824,27 +830,38 @@ const App = () => {
                               className="absolute inset-0 w-full h-full object-contain z-10"
                             />
                           )}
+                          <button
+                            onClick={resetSelection}
+                            className="absolute top-3 right-3 bg-gray-900/80 hover:bg-red-500 text-white p-2 rounded-full transition-colors backdrop-blur-md z-30"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
                         </>
                       )}
-                      {loading && (
-                        <div className="absolute inset-0 bg-gray-900/80 flex flex-col items-center justify-center z-20 transition-opacity duration-300">
-                          <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
-                          <p className="mt-4 text-gray-300">
-                            Analyzing Image...
-                          </p>
-                        </div>
-                      )}
-                      {(preview || (result && !isScanning)) && (
-                        <button
-                          onClick={resetSelection}
-                          className="absolute top-3 right-3 bg-gray-900/80 hover:bg-red-500 text-white p-2 rounded-full transition-colors backdrop-blur-md z-30"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      )}
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {loading && (
+                    <div className="absolute inset-0 z-40 pointer-events-none">
+                      <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-[2px]"></div>
+                      <div className="absolute w-full h-1 bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)] animate-scan z-50"></div>
+                      <div
+                        className="absolute inset-0 opacity-20 z-40"
+                        style={{
+                          backgroundImage:
+                            "linear-gradient(0deg, transparent 24%, rgba(16, 185, 129, .3) 25%, rgba(16, 185, 129, .3) 26%, transparent 27%, transparent 74%, rgba(16, 185, 129, .3) 75%, rgba(16, 185, 129, .3) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(16, 185, 129, .3) 25%, rgba(16, 185, 129, .3) 26%, transparent 27%, transparent 74%, rgba(16, 185, 129, .3) 75%, rgba(16, 185, 129, .3) 76%, transparent 77%, transparent)",
+                          backgroundSize: "50px 50px",
+                        }}
+                      ></div>
+                      <div className="absolute bottom-4 left-0 right-0 text-center z-50">
+                        <span className="inline-flex items-center gap-2 px-4 py-2 bg-black/60 rounded-full text-emerald-400 font-mono text-sm border border-emerald-500/30">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          ANALYZING TARGET...
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-8">
                   {error && (
                     <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-200">
@@ -852,7 +869,7 @@ const App = () => {
                       <span className="text-sm">{error}</span>
                     </div>
                   )}
-                  {result && !isScanning ? (
+                  {result && !loading ? (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                       <div
                         className={`p-6 rounded-2xl border ${
@@ -913,56 +930,18 @@ const App = () => {
                       </button>
                     </div>
                   ) : (
-                    // BUTTONS
                     <div className="mt-4">
-                      {isScanning ? (
+                      {!result && scannerMode === "upload" && (
                         <button
-                          onClick={stopLiveScan}
-                          className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-lg animate-pulse shadow-lg transition-all"
-                        >
-                          <div className="flex flex-col items-center">
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 bg-white rounded-full"></div>
-                              <span>STOP & SAVE BEST</span>
-                            </div>
-                            {bestResult && (
-                              <span className="text-xs font-normal opacity-90 mt-1 uppercase tracking-wide">
-                                Found: {bestResult.label} (
-                                {bestResult.confidence.toFixed(0)}%)
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={
-                            scannerMode === "camera"
-                              ? startLiveScan
-                              : handlePrediction
-                          }
-                          disabled={
-                            (!isCameraActive && !file) ||
-                            (loading && !isScanning)
-                          }
-                          className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 shadow-lg ${
-                            !isCameraActive && !file
+                          onClick={handlePrediction}
+                          disabled={!file || loading}
+                          className={`w-full mt-4 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${
+                            !file
                               ? "bg-gray-800 text-gray-500 cursor-not-allowed"
-                              : "bg-white text-gray-900 hover:bg-gray-100 hover:shadow-xl hover:-translate-y-1"
+                              : "bg-white text-gray-900 hover:bg-gray-100"
                           }`}
                         >
-                          {loading ? (
-                            <>
-                              <Loader2 className="w-6 h-6 animate-spin" />
-                              Scanning...
-                            </>
-                          ) : (
-                            <>
-                              <ScanSearch className="w-6 h-6" />
-                              {scannerMode === "upload"
-                                ? "Detect File"
-                                : "Start Live Scan"}
-                            </>
-                          )}
+                          <ScanSearch className="w-6 h-6" /> Detect File
                         </button>
                       )}
                     </div>
@@ -1004,9 +983,7 @@ const App = () => {
                   </button>
                 </div>
               </div>
-              {/* Added: Charting Component for History Trends */}
               <HistoryAnalytics history={filteredHistory} />
-              {/* Search & Filter Bar */}
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 mb-4 flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
