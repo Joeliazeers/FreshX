@@ -80,7 +80,24 @@ log/
 *.log
 
 pw_git.txt
-pw_mongo.txt
+mongo_api.txt
 
+
+# Ignore System Files
+.DS_Store
+node_modules/
+.venv/
+__pycache__/
+
+# Ignore Heavy Training Data (CRITICAL)
+backend/dataset/
+backend/runs/
+backend/yolov8n.pt
+backend/yolo11n.pt
+
+# Ignore Large Files (except our specific model)
+*.h5
+*.pt
+!backend/best.pt
 
 **/Fruit Freshness
