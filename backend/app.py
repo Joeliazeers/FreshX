@@ -13,7 +13,6 @@ app = Flask(__name__)
 CORS(app)
 
 # --- CONFIGURATION ---
-# Load the YOLO Model (Ensure best.pt is in the same folder)
 print("Loading YOLOv8 Model...")
 try:
     model = YOLO('best.pt')
@@ -32,24 +31,22 @@ def predict():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
+    # Get User ID from headers (default to 'anonymous' if missing)
+    user_id = request.headers.get('x-device-id', 'anonymous')
+
     try:
-        # 1. Read Image
         image_bytes = file.read()
         image = Image.open(io.BytesIO(image_bytes))
 
-        # 2. Run YOLO Inference
-        # conf=0.25 -> Only accept detections with >25% confidence
+        # Run YOLO Inference
         results = model.predict(image, conf=0.50) 
+        result = results[0]
         
-        result = results[0] # Get first result
-        
-        # 3. Process Detections
         highest_conf = 0
         primary_label = "No Fruit Detected"
         is_fresh = False
         
         if len(result.boxes) > 0:
-            # Find the detection with highest confidence
             for box in result.boxes:
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
@@ -58,48 +55,39 @@ def predict():
                 if conf > highest_conf:
                     highest_conf = conf
                     primary_label = label_name
-                    
-                    # Logic: Determine Freshness based on label name
-                    # Adjust this logic based on your exact RoboFlow label names!
-                    # Example labels: "Fresh Apple", "Rotten Banana", "fresh_orange"
                     lower_label = label_name.lower()
                     if "fresh" in lower_label:
                         is_fresh = True
                     elif "rotten" in lower_label:
                         is_fresh = False
                     else:
-                        # Fallback if label is just "Apple" (assume fresh? or check dataset)
                         is_fresh = False 
 
-        # 4. Generate "Heatmap" (Annotated Image with Boxes)
-        # YOLO has a built-in plotter that returns a BGR numpy array
         annotated_array = result.plot() 
-        
-        # Convert BGR (OpenCV format) to RGB (PIL format)
         annotated_img = Image.fromarray(annotated_array[..., ::-1]) 
         
-        # Encode to Base64 for Frontend
         buffer = io.BytesIO()
         annotated_img.save(buffer, format='JPEG')
         heatmap_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-        # 5. Prepare Response
         response_data = {
             'label': primary_label.title(),
             'confidence': float(highest_conf * 100),
             'is_fresh': is_fresh,
             'model_used': 'YOLOv8',
-            'heatmap_b64': heatmap_b64 # Frontend will display the box image here
+            'heatmap_b64': heatmap_b64 
         }
 
-        # 6. Save to History (Without the massive image string)
         try:
             history_record = {
+                "user_id": user_id,  # Add user_id to record
                 "filename": file.filename,
                 **response_data,
                 "timestamp": datetime.now().isoformat()
             }
+            # Remove heavy base64 image before saving to DB
             history_record.pop('heatmap_b64', None) 
+            
             insert_history_record(history_record)
         except Exception as e:
             print(f"Database Error: {e}")
@@ -110,21 +98,44 @@ def predict():
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-# ... (Keep your History endpoints: /history GET and DELETE) ...
-# Paste the rest of your history/database routes here if they are missing
 @app.route('/history', methods=['GET'])
 def get_history():
-    return jsonify(get_all_history())
+    user_id = request.headers.get('x-device-id', 'anonymous')
+    
+    try:
+        # Use the imported function instead of raw 'collection'
+        history = get_all_history(user_id)
+        
+        # Helper to ensure ObjectIds are converted to string
+        for item in history:
+            if '_id' in item:
+                item['_id'] = str(item['_id'])
+                
+        return jsonify(history)
+    except Exception as e:
+        print(f"Fetch History Error: {e}")
+        return jsonify([]), 200
 
 @app.route('/history', methods=['DELETE'])
 def clear_all_history():
-    return jsonify({'message': f'Deleted {delete_all_history().deleted_count} records'})
+    user_id = request.headers.get('x-device-id', 'anonymous')
+    try:
+        # Pass user_id to ensure we only delete that user's history
+        result = delete_all_history(user_id)
+        return jsonify({'message': f'Deleted {result.deleted_count} records'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/history/<item_id>', methods=['DELETE'])
 def delete_history_item(item_id):
-    result = delete_history_record(item_id)
-    return jsonify({'message': 'Deleted'}) if result.deleted_count > 0 else (jsonify({'error': 'Not found'}), 404)
-
+    try:
+        result = delete_history_record(item_id)
+        if result.deleted_count > 0:
+            return jsonify({'message': 'Deleted'})
+        else:
+            return jsonify({'error': 'Not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))

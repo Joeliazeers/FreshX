@@ -35,6 +35,14 @@ import {
   Legend,
 } from "recharts";
 
+const getDeviceId = () => {
+  let deviceId = localStorage.getItem("freshx_device_id");
+  if (!deviceId) {
+    deviceId = "user_" + Math.random().toString(36).substr(2, 9) + Date.now();
+    localStorage.setItem("freshx_device_id", deviceId);
+  }
+  return deviceId;
+};
 // --- CSS for the Sci-Fi Scanner Animation ---
 const scannerStyles = `
   @keyframes scan {
@@ -415,16 +423,16 @@ const App = () => {
 
   // --- SHARED ANALYSIS LOGIC ---
   const analyzeImage = async (imageBlob, filename) => {
-    setLoading(true); // Triggers the animation HERE (when analyzing)
-    setError(null);
-
+    // ... setup code ...
     const formData = new FormData();
     formData.append("file", imageBlob, filename);
     formData.append("save", "true");
 
     try {
+      // ADD HEADERS HERE
       const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
+        headers: { "x-device-id": getDeviceId() }, // <--- ADD THIS
         body: formData,
       });
       const data = await response.json();
@@ -517,7 +525,10 @@ const App = () => {
     setLoadingHistory(true);
     setHistoryError(null);
     try {
-      const response = await fetch(`${API_URL}/history`);
+      // ADD HEADERS HERE
+      const response = await fetch(`${API_URL}/history`, {
+        headers: { "x-device-id": getDeviceId() },
+      });
       if (!response.ok) {
         setHistoryError(
           `Database unavailable (Status: ${response.status}). Is backend running?`
@@ -535,8 +546,10 @@ const App = () => {
 
   const deleteHistoryItem = async (id) => {
     try {
+      // ADD HEADERS HERE
       const response = await fetch(`${API_URL}/history/${id}`, {
         method: "DELETE",
+        headers: { "x-device-id": getDeviceId() }, // <--- ADD THIS
       });
       if (response.ok) {
         setHistory((prev) => prev.filter((item) => item._id !== id));
@@ -552,15 +565,12 @@ const App = () => {
   };
 
   const clearAllHistory = async () => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete ALL history? This cannot be undone."
-      )
-    )
-      return;
+    // ... check window.confirm ...
     try {
+      // ADD HEADERS HERE
       const response = await fetch(`${API_URL}/history`, {
         method: "DELETE",
+        headers: { "x-device-id": getDeviceId() }, // <--- ADD THIS
       });
       if (response.ok) {
         setHistory([]);
