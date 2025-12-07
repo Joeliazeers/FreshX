@@ -1,4 +1,13 @@
-# Logs
+# ---------------------------------
+# GENERAL / OS FILES
+# ---------------------------------
+.DS_Store
+Thumbs.db
+*.sw?
+
+# ---------------------------------
+# LOGS & DEBUGGING
+# ---------------------------------
 logs
 *.log
 npm-debug.log*
@@ -6,98 +15,80 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+log/
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# ---------------------------------
+# EDITOR / IDE SETTINGS
+# ---------------------------------
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
 
+# ---------------------------------
+# FRONTEND (Node.js / React)
+# ---------------------------------
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr
+*.local
 
-Python / Backend specific files
-
-------------------------------------
-
-Virtual environment directory
-
+# ---------------------------------
+# BACKEND (Python / Flask)
+# ---------------------------------
+# Virtual Environments
 .venv/
 venv/
 env/
 
-Python compiled objects
-
-pycache/
+# Python Cache & Bytecode
+__pycache__/
 *.pyc
 *.pyo
 
-Flask/Werkzeug metadata
-
+# Flask Metadata
 .flaskenv
 
-TensorFlow / AI artifacts
-
-MongoDB / Database data
-
-If MongoDB is saving local files in the backend directory
-
+# ---------------------------------
+# DATABASE (Local files)
+# ---------------------------------
 data/
 db/
 *.mongodb
 
-Node / Frontend specific files
-
-------------------------------------
-
-Node modules
-
-/frontend/node_modules
-/node_modules
-
-Production build output
-
-/frontend/dist
-
-Build cache and logs
-
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.DS_Store
-
-Logs
-
-log/
-*.log
-
+# ---------------------------------
+# SECRETS (Do not upload!)
+# ---------------------------------
 pw_git.txt
-mongo_api.txt
+.env
+.env.local
 
-
-# Ignore System Files
-.DS_Store
-node_modules/
-.venv/
-__pycache__/
-
-# Ignore Heavy Training Data (CRITICAL)
+# ---------------------------------
+# AI / HEAVY DATA (CRITICAL)
+# ---------------------------------
+# Ignore the massive training dataset
 backend/dataset/
+
+# Ignore training logs and backups
 backend/runs/
+
+# Ignore base YOLO models (we don't need to upload standard ones)
 backend/yolov8n.pt
 backend/yolo11n.pt
 
-# Ignore Large Files (except our specific model)
+# Ignore huge TensorFlow models
 *.h5
-*.pt
-!backend/best.pt
 
-**/Fruit Freshness
+# ---------------------------------
+# MODEL EXCEPTIONS
+# ---------------------------------
+# Ignore ALL PyTorch models by default...
+*.pt
+
+# ...BUT force Git to keep ONLY our best custom model
+!backend/best.pt

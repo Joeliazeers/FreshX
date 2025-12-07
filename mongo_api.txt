@@ -1,1 +1,0 @@
-mongodb+srv://joeliazeers:KirCWp8n8uuQjBko@cluster0.9lar11c.mongodb.net/?appName=Cluster0
