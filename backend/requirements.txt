@@ -1,10 +1,8 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-
-torch
-torchvision
 ultralytics
 flask
 flask-cors
+opencv-python-headless
+python-dotenv
 pillow
 pymongo[srv]
 gunicorn
