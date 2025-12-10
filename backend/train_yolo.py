@@ -7,7 +7,7 @@ if __name__ == '__main__':
     print("Starting training...")
     results = model.train(
         data='data.yaml', 
-        epochs=30, 
+        epochs=50, 
         imgsz=640,
         plots=True
     )
