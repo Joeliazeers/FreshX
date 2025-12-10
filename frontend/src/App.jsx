@@ -359,10 +359,8 @@ const App = () => {
     });
   };
 
-  // --- NEW: Manual Camera Logic ---
   const startCamera = async () => {
     try {
-      // NOTE: Removed setLoading(true) here so animation doesn't start!
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment",
@@ -395,41 +393,32 @@ const App = () => {
   const captureSnapshot = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    // 1. Setup Canvas
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    // Ensure we capture the resolution of the video feed
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // 2. Pause video immediately to give "Snapshot" feedback
     video.pause();
 
-    // 3. Convert to Blob
     const blob = await new Promise((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", 0.9)
     );
 
-    // 4. Stop Camera Stream
     stopCamera();
 
-    // 5. Send to API
     analyzeImage(blob, "camera_snapshot.jpg");
   };
 
-  // --- SHARED ANALYSIS LOGIC ---
   const analyzeImage = async (imageBlob, filename) => {
-    // ... setup code ...
     const formData = new FormData();
     formData.append("file", imageBlob, filename);
     formData.append("save", "true");
 
     try {
-      // ADD HEADERS HERE
       const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "x-device-id": getDeviceId() }, // <--- ADD THIS
@@ -459,7 +448,6 @@ const App = () => {
     }
   };
 
-  // --- FILE HANDLING ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
@@ -525,7 +513,6 @@ const App = () => {
     setLoadingHistory(true);
     setHistoryError(null);
     try {
-      // ADD HEADERS HERE
       const response = await fetch(`${API_URL}/history`, {
         headers: { "x-device-id": getDeviceId() },
       });
@@ -565,12 +552,10 @@ const App = () => {
   };
 
   const clearAllHistory = async () => {
-    // ... check window.confirm ...
     try {
-      // ADD HEADERS HERE
       const response = await fetch(`${API_URL}/history`, {
         method: "DELETE",
-        headers: { "x-device-id": getDeviceId() }, // <--- ADD THIS
+        headers: { "x-device-id": getDeviceId() }, 
       });
       if (response.ok) {
         setHistory([]);
@@ -754,7 +739,6 @@ const App = () => {
                           muted
                         />
                         <div className="absolute bottom-4 z-30">
-                          {/* MANUAL CAPTURE BUTTON */}
                           <button
                             onClick={captureSnapshot}
                             className="bg-white text-gray-900 rounded-full px-6 py-2 font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
@@ -779,7 +763,6 @@ const App = () => {
                         </button>
                       </div>
                     ) : (
-                      // CAMERA START STATE (FIXED: SOLID BORDER, NO DASH)
                       <div className="w-full h-full rounded-2xl border border-gray-700 bg-gray-900 flex flex-col items-center justify-center text-center p-4">
                         <Video className="w-12 h-12 text-gray-600 mb-4" />
                         <p className="text-lg font-medium text-gray-400">
@@ -794,7 +777,6 @@ const App = () => {
                       </div>
                     )
                   ) : (
-                    // MODE: UPLOAD (FIXED: CENTERED PREVIEW)
                     <div className="relative w-full h-full flex items-center justify-center">
                       {!preview ? (
                         <div
