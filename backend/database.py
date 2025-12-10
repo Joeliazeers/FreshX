@@ -2,10 +2,8 @@ import os
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 
-# Configuration
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
 
-# Initialize Client
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client['freshx_db']
 history_collection = db['history']
@@ -20,7 +18,6 @@ def get_all_history(user_id=None):
     If user_id is provided, filters by that specific user.
     """
     query = {}
-    # Only filter if a specific user_id is provided and valid
     if user_id and user_id != 'anonymous':
         query['user_id'] = user_id
 
