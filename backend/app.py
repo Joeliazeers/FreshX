@@ -15,9 +15,9 @@ CORS(app)
 print("Loading YOLOv8 Model...")
 try:
     model = YOLO('best.pt')
-    print("✅ YOLOv8 Model Loaded Successfully!")
+    print("YOLOv8 Model Loaded Successfully!")
 except Exception as e:
-    print(f"❌ Error loading YOLO model: {e}")
+    print(f"Error loading YOLO model: {e}")
     print("Did you move 'best.pt' to the backend folder?")
 
 @app.route('/predict', methods=['POST'])
