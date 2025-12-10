@@ -12,7 +12,6 @@ from database import insert_history_record, get_all_history, delete_history_reco
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATION ---
 print("Loading YOLOv8 Model...")
 try:
     model = YOLO('best.pt')
@@ -20,7 +19,6 @@ try:
 except Exception as e:
     print(f"❌ Error loading YOLO model: {e}")
     print("Did you move 'best.pt' to the backend folder?")
-# ---------------------
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -31,14 +29,12 @@ def predict():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
-    # Get User ID from headers (default to 'anonymous' if missing)
     user_id = request.headers.get('x-device-id', 'anonymous')
 
     try:
         image_bytes = file.read()
         image = Image.open(io.BytesIO(image_bytes))
 
-        # Run YOLO Inference
         results = model.predict(image, conf=0.50) 
         result = results[0]
         
@@ -80,12 +76,11 @@ def predict():
 
         try:
             history_record = {
-                "user_id": user_id,  # Add user_id to record
+                "user_id": user_id,  
                 "filename": file.filename,
                 **response_data,
                 "timestamp": datetime.now().isoformat()
             }
-            # Remove heavy base64 image before saving to DB
             history_record.pop('heatmap_b64', None) 
             
             insert_history_record(history_record)
@@ -103,10 +98,8 @@ def get_history():
     user_id = request.headers.get('x-device-id', 'anonymous')
     
     try:
-        # Use the imported function instead of raw 'collection'
         history = get_all_history(user_id)
         
-        # Helper to ensure ObjectIds are converted to string
         for item in history:
             if '_id' in item:
                 item['_id'] = str(item['_id'])
@@ -120,7 +113,6 @@ def get_history():
 def clear_all_history():
     user_id = request.headers.get('x-device-id', 'anonymous')
     try:
-        # Pass user_id to ensure we only delete that user's history
         result = delete_all_history(user_id)
         return jsonify({'message': f'Deleted {result.deleted_count} records'})
     except Exception as e:
