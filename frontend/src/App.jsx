@@ -43,7 +43,6 @@ const getDeviceId = () => {
   }
   return deviceId;
 };
-// --- CSS for the Sci-Fi Scanner Animation ---
 const scannerStyles = `
   @keyframes scan {
     0% { top: 0%; opacity: 0; }
