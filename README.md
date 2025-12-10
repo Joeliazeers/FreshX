@@ -18,9 +18,7 @@
 ## 🚀 Features
 
 - **👁️ YOLOv8 Object Detection:** Uses a custom-trained YOLOv8 Nano model to draw bounding boxes around fruits, offering superior accuracy in "messy" environments compared to standard classification.
-- **⚡ Smart Live Scanning:** Features a recursive "Smart Loop" camera mode that analyzes video frames in real-time without lag.
-- **🏆 "King of the Hill" Logic:** Automatically captures multiple frames and saves only the detection with the highest confidence score.
-- **📊 Smart Analytics:** Visualizes detection history with pie charts and trend lines.
+- **📊 Smart Analytics:** Visualizes detection history with pie charts.
 - **☁️ Cloud Sync:** Automatically saves detection metadata to MongoDB Atlas.
 
 &nbsp;
