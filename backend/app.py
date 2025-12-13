@@ -30,6 +30,7 @@ def predict():
         return jsonify({'error': 'No selected file'}), 400
 
     user_id = request.headers.get('x-device-id', 'anonymous')
+    notes = request.form.get('notes', '')
 
     try:
         image_bytes = file.read()
@@ -38,6 +39,7 @@ def predict():
         results = model.predict(image, conf=0.50) 
         result = results[0]
         
+        detections = []
         highest_conf = 0
         primary_label = "No Fruit Detected"
         is_fresh = False
@@ -47,17 +49,23 @@ def predict():
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
                 label_name = result.names[cls_id]
+                lower_label = label_name.lower()
+                
+                detection_is_fresh = "fresh" in lower_label and "rotten" not in lower_label
+                
+                coords = box.xyxy[0].tolist()
+                detection = {
+                    "label": label_name.title(),
+                    "confidence": float(conf * 100),
+                    "is_fresh": detection_is_fresh,
+                    "bbox": coords
+                }
+                detections.append(detection)
                 
                 if conf > highest_conf:
                     highest_conf = conf
                     primary_label = label_name
-                    lower_label = label_name.lower()
-                    if "fresh" in lower_label:
-                        is_fresh = True
-                    elif "rotten" in lower_label:
-                        is_fresh = False
-                    else:
-                        is_fresh = False 
+                    is_fresh = detection_is_fresh
 
         annotated_array = result.plot() 
         annotated_img = Image.fromarray(annotated_array[..., ::-1]) 
@@ -71,17 +79,24 @@ def predict():
             'confidence': float(highest_conf * 100),
             'is_fresh': is_fresh,
             'model_used': 'YOLOv8',
-            'heatmap_b64': heatmap_b64 
+            'heatmap_b64': heatmap_b64,
+            'detections': detections,
+            'detection_count': len(detections)
         }
 
         try:
             history_record = {
                 "user_id": user_id,  
                 "filename": file.filename,
-                **response_data,
+                "label": primary_label.title(),
+                "confidence": float(highest_conf * 100),
+                "is_fresh": is_fresh,
+                "model_used": 'YOLOv8',
+                "detections": detections,
+                "detection_count": len(detections),
+                "notes": notes,
                 "timestamp": datetime.now().isoformat()
             }
-            history_record.pop('heatmap_b64', None) 
             
             insert_history_record(history_record)
         except Exception as e:

@@ -20,6 +20,7 @@ import {
   DownloadCloud,
   PieChart as PieIcon,
   TrendingUp,
+  Calendar,
 } from "lucide-react";
 import {
   PieChart,
@@ -34,6 +35,8 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const getDeviceId = () => {
   let deviceId = localStorage.getItem("freshx_device_id");
@@ -194,6 +197,37 @@ const ResultDetailCard = ({ modelUsed, result }) => {
           </div>
         </div>
       </div>
+      {result.detections && result.detections.length > 1 && (
+        <div className="mt-6 pt-6 border-t border-gray-700">
+          <h4 className="text-sm font-semibold text-gray-400 mb-4 flex items-center gap-2">
+            🍎 ALL DETECTIONS ({result.detections.length} items)
+          </h4>
+          <div className="space-y-2">
+            {result.detections.map((det, idx) => (
+              <div
+                key={idx}
+                className={`flex items-center justify-between p-3 rounded-lg border ${
+                  det.is_fresh
+                    ? "bg-emerald-500/10 border-emerald-500/20"
+                    : "bg-red-500/10 border-red-500/20"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">{det.is_fresh ? "✅" : "❌"}</span>
+                  <span className="font-medium text-white">{det.label}</span>
+                </div>
+                <span
+                  className={`font-bold ${
+                    det.is_fresh ? "text-emerald-400" : "text-red-400"
+                  }`}
+                >
+                  {det.confidence.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -305,6 +339,9 @@ const App = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterFruitType, setFilterFruitType] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
 
   // File Upload
@@ -324,6 +361,11 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [scannerMode, setScannerMode] = useState("upload");
+  const [notes, setNotes] = useState("");
+  const [batchFiles, setBatchFiles] = useState([]);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchResults, setBatchResults] = useState([]);
+  const [isBatchMode, setIsBatchMode] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -409,20 +451,27 @@ const App = () => {
 
     stopCamera();
 
-    analyzeImage(blob, "camera_snapshot.jpg");
+    setLoading(true);
+    analyzeImage(blob, "camera_snapshot.jpg", notes);
   };
 
-  const analyzeImage = async (imageBlob, filename) => {
+  const analyzeImage = async (imageBlob, filename, userNotes = "") => {
     const formData = new FormData();
     formData.append("file", imageBlob, filename);
     formData.append("save", "true");
+    formData.append("notes", userNotes);
+
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 3000));
 
     try {
-      const response = await fetch(`${API_URL}/predict`, {
-        method: "POST",
-        headers: { "x-device-id": getDeviceId() }, // <--- ADD THIS
-        body: formData,
-      });
+      const [response] = await Promise.all([
+        fetch(`${API_URL}/predict`, {
+          method: "POST",
+          headers: { "x-device-id": getDeviceId() },
+          body: formData,
+        }),
+        minDelay,
+      ]);
       const data = await response.json();
 
       if (response.ok) {
@@ -435,6 +484,9 @@ const App = () => {
           is_fresh: data.is_fresh,
           timestamp: new Date().toISOString(),
           model_used: data.model_used || "YOLO",
+          notes: userNotes,
+          detections: data.detections || [],
+          detection_count: data.detection_count || 1,
         };
         setHistory((prev) => [newHistoryItem, ...prev]);
       } else {
@@ -496,6 +548,11 @@ const App = () => {
     setPreview(null);
     setResult(null);
     setError(null);
+    setNotes("");
+    setBatchFiles([]);
+    setBatchProgress(0);
+    setBatchResults([]);
+    setIsBatchMode(false);
     stopCamera();
   };
 
@@ -504,8 +561,68 @@ const App = () => {
       setError("Please upload an image first.");
       return;
     }
+    setLoading(true);
     const resized = await resizeImageAndGetBlob(file, 800, 800);
-    analyzeImage(resized, file.name);
+    analyzeImage(resized, file.name, notes);
+  };
+
+  const handleBatchUpload = async () => {
+    if (batchFiles.length === 0) return;
+    
+    setIsBatchMode(true);
+    setLoading(true);
+    setBatchProgress(0);
+    setBatchResults([]);
+    
+    const results = [];
+    
+    for (let i = 0; i < batchFiles.length; i++) {
+      const file = batchFiles[i];
+      setBatchProgress(((i) / batchFiles.length) * 100);
+      
+      try {
+        const resized = await resizeImageAndGetBlob(file, 800, 800);
+        const formData = new FormData();
+        formData.append("file", resized, file.name);
+        formData.append("save", "true");
+        formData.append("notes", notes);
+        
+        const response = await fetch(`${API_URL}/predict`, {
+          method: "POST",
+          headers: { "x-device-id": getDeviceId() },
+          body: formData,
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          results.push({ filename: file.name, ...data, success: true });
+          const newHistoryItem = {
+            _id: "temp-" + Date.now() + i,
+            filename: file.name,
+            label: data.label,
+            confidence: data.confidence,
+            is_fresh: data.is_fresh,
+            timestamp: new Date().toISOString(),
+            model_used: data.model_used || "YOLO",
+            notes: notes,
+            detections: data.detections || [],
+            detection_count: data.detection_count || 1,
+          };
+          setHistory((prev) => [newHistoryItem, ...prev]);
+        } else {
+          results.push({ filename: file.name, error: data.error, success: false });
+        }
+      } catch (err) {
+        results.push({ filename: file.name, error: "Failed to process", success: false });
+      }
+      
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    
+    setBatchProgress(100);
+    setBatchResults(results);
+    setLoading(false);
   };
 
   const fetchHistory = async () => {
@@ -576,6 +693,7 @@ const App = () => {
       "Is Fresh",
       "Confidence",
       "Model",
+      "Notes",
     ];
     const rows = history.map((item) => [
       item.timestamp,
@@ -584,6 +702,7 @@ const App = () => {
       item.is_fresh ? "Yes" : "No",
       item.confidence.toFixed(2),
       item.model_used,
+      `"${(item.notes || "").replace(/"/g, '""')}"`,
     ]);
     const csvContent =
       "data:text/csv;charset=utf-8," +
@@ -595,6 +714,59 @@ const App = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const exportPDF = () => {
+    if (history.length === 0) return;
+    
+    const doc = new jsPDF();
+    const freshCount = history.filter((h) => h.is_fresh).length;
+    const rottenCount = history.length - freshCount;
+    const avgConfidence = history.reduce((sum, h) => sum + h.confidence, 0) / history.length;
+    
+    doc.setFillColor(16, 185, 129);
+    doc.rect(0, 0, 210, 35, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont("helvetica", "bold");
+    doc.text("FreshX Detection Report", 14, 22);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
+    
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary Statistics", 14, 48);
+    
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total Detections: ${history.length}`, 14, 58);
+    doc.text(`Fresh: ${freshCount} (${((freshCount / history.length) * 100).toFixed(1)}%)`, 14, 66);
+    doc.text(`Rotten: ${rottenCount} (${((rottenCount / history.length) * 100).toFixed(1)}%)`, 14, 74);
+    doc.text(`Average Confidence: ${avgConfidence.toFixed(1)}%`, 14, 82);
+    doc.text(`Model: YOLOv8 (Fruit Freshness Detection)`, 14, 90);
+    
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detection History", 14, 106);
+    
+    autoTable(doc, {
+      startY: 113,
+      head: [["Date/Time", "Label", "Status", "Confidence", "Notes"]],
+      body: history.map((item) => [
+        new Date(item.timestamp).toLocaleString(),
+        item.label,
+        item.is_fresh ? "Fresh" : "Rotten",
+        `${item.confidence.toFixed(1)}%`,
+        (item.notes || "-").substring(0, 30),
+      ]),
+      headStyles: { fillColor: [16, 185, 129] },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      styles: { fontSize: 9 },
+    });
+    
+    doc.save("freshx_report.pdf");
   };
 
   const switchTab = (tab) => {
@@ -609,15 +781,31 @@ const App = () => {
     }
   };
 
+  const uniqueFruitTypes = [...new Set(history.map((item) => {
+    const label = item.label.toLowerCase();
+    return label.replace(/fresh |rotten /gi, "").trim();
+  }))].filter(Boolean);
+
   const filteredHistory = history.filter((item) => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      item.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.filename.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter =
+      item.label.toLowerCase().includes(searchLower) ||
+      item.filename.toLowerCase().includes(searchLower) ||
+      (item.notes && item.notes.toLowerCase().includes(searchLower));
+    
+    const matchesStatus =
       filterStatus === "all" ||
       (filterStatus === "fresh" && item.is_fresh) ||
       (filterStatus === "rotten" && !item.is_fresh);
-    return matchesSearch && matchesFilter;
+    
+    const itemFruitType = item.label.toLowerCase().replace(/fresh |rotten /gi, "").trim();
+    const matchesFruitType = filterFruitType === "all" || itemFruitType === filterFruitType;
+    
+    const itemDate = new Date(item.timestamp);
+    const matchesDateFrom = !dateFrom || itemDate >= new Date(dateFrom);
+    const matchesDateTo = !dateTo || itemDate <= new Date(dateTo + "T23:59:59");
+    
+    return matchesSearch && matchesStatus && matchesFruitType && matchesDateFrom && matchesDateTo;
   });
 
   const modelIndicator = result
@@ -767,6 +955,13 @@ const App = () => {
                         <p className="text-lg font-medium text-gray-400">
                           Camera Ready
                         </p>
+                        <input
+                          type="text"
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          placeholder="Add notes (optional)"
+                          className="mt-4 w-full max-w-xs px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                        />
                         <button
                           onClick={startCamera}
                           className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 text-white"
@@ -782,7 +977,40 @@ const App = () => {
                           onDragEnter={handleDragEnter}
                           onDragLeave={handleDragLeave}
                           onDragOver={handleDragOver}
-                          onDrop={handleDrop}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(false);
+                            const files = Array.from(e.dataTransfer.files);
+                            const validTypes = ["image/png", "image/jpg", "image/jpeg"];
+                            const maxSize = 5 * 1024 * 1024; // 5MB
+                            
+                            const validFiles = files.filter((f) => {
+                              if (!validTypes.includes(f.type)) {
+                                setError(`Invalid file type: ${f.name}. Only PNG, JPG, JPEG allowed.`);
+                                return false;
+                              }
+                              if (f.size > maxSize) {
+                                setError(`File too large: ${f.name}. Max size is 5MB.`);
+                                return false;
+                              }
+                              return true;
+                            });
+                            
+                            if (validFiles.length === 0) return;
+                            
+                            setError(null);
+                            if (validFiles.length > 1) {
+                              setBatchFiles(validFiles);
+                              setFile(null);
+                              setPreview(null);
+                            } else if (validFiles.length === 1) {
+                              setFile(validFiles[0]);
+                              setPreview(URL.createObjectURL(validFiles[0]));
+                              setBatchFiles([]);
+                            }
+                            setResult(null);
+                          }}
                           onClick={triggerFileInput}
                           className={`border-2 border-dashed rounded-2xl w-full h-full flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group p-4 text-center ${
                             isDragging
@@ -794,18 +1022,74 @@ const App = () => {
                             <Upload className="w-8 h-8 text-emerald-400" />
                           </div>
                           <p className="text-lg font-medium text-gray-300 group-hover:text-white">
-                            Click or drag image here
+                            Click or drag images here
                           </p>
                           <p className="text-sm text-gray-500 mt-2">
-                            Supports JPG, PNG
+                            PNG, JPG, JPEG (max 5MB)
                           </p>
                           <input
                             type="file"
                             ref={fileInputRef}
-                            onChange={handleFileChange}
-                            accept="image/*"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files);
+                              const validTypes = ["image/png", "image/jpg", "image/jpeg"];
+                              const maxSize = 5 * 1024 * 1024; // 5MB
+                              
+                              const validFiles = files.filter((f) => {
+                                if (!validTypes.includes(f.type)) {
+                                  setError(`Invalid file type: ${f.name}. Only PNG, JPG, JPEG allowed.`);
+                                  return false;
+                                }
+                                if (f.size > maxSize) {
+                                  setError(`File too large: ${f.name}. Max size is 5MB.`);
+                                  return false;
+                                }
+                                return true;
+                              });
+                              
+                              if (validFiles.length === 0) return;
+                              
+                              setError(null);
+                              if (validFiles.length > 1) {
+                                setBatchFiles(validFiles);
+                                setFile(null);
+                                setPreview(null);
+                              } else if (validFiles.length === 1) {
+                                setFile(validFiles[0]);
+                                setPreview(URL.createObjectURL(validFiles[0]));
+                                setBatchFiles([]);
+                              }
+                              setResult(null);
+                            }}
+                            accept=".png,.jpg,.jpeg"
+                            multiple
                             className="hidden"
                           />
+                        </div>
+                      ) : batchFiles.length > 0 ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                          <div className="text-center mb-4">
+                            <span className="text-2xl font-bold text-emerald-400">{batchFiles.length}</span>
+                            <span className="text-gray-400 ml-2">files selected</span>
+                          </div>
+                          <div className="w-full max-h-32 overflow-y-auto space-y-1 mb-4">
+                            {batchFiles.slice(0, 5).map((f, i) => (
+                              <div key={i} className="text-sm text-gray-300 truncate px-2 py-1 bg-gray-800 rounded">
+                                📁 {f.name}
+                              </div>
+                            ))}
+                            {batchFiles.length > 5 && (
+                              <div className="text-sm text-gray-500 px-2">
+                                ...and {batchFiles.length - 5} more
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={resetSelection}
+                            className="text-sm text-red-400 hover:text-red-300"
+                          >
+                            Clear Selection
+                          </button>
                         </div>
                       ) : (
                         <>
@@ -923,17 +1207,89 @@ const App = () => {
                   ) : (
                     <div className="mt-4">
                       {!result && scannerMode === "upload" && (
-                        <button
-                          onClick={handlePrediction}
-                          disabled={!file || loading}
-                          className={`w-full mt-4 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${
-                            !file
-                              ? "bg-gray-800 text-gray-500 cursor-not-allowed"
-                              : "bg-white text-gray-900 hover:bg-gray-100"
-                          }`}
-                        >
-                          <ScanSearch className="w-6 h-6" /> Detect File
-                        </button>
+                        <>
+                          <input
+                            type="text"
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Add notes (e.g., Warehouse A, Batch #102)"
+                            className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                          />
+                          {batchFiles.length > 0 ? (
+                            <>
+                              {isBatchMode && batchProgress > 0 && (
+                                <div className="mt-4">
+                                  <div className="flex justify-between text-sm text-gray-400 mb-2">
+                                    <span>Processing batch...</span>
+                                    <span>{Math.round(batchProgress)}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-emerald-500 transition-all duration-300"
+                                      style={{ width: `${batchProgress}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              )}
+                              {batchResults.length > 0 && !loading && (
+                                <div className="mt-4 p-4 bg-gray-800 rounded-xl border border-gray-700">
+                                  <h4 className="font-bold text-white mb-3">Batch Results</h4>
+                                  <div className="grid grid-cols-2 gap-4 text-center mb-4">
+                                    <div className="bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
+                                      <span className="text-2xl font-bold text-emerald-400">
+                                        {batchResults.filter(r => r.success && r.is_fresh).length}
+                                      </span>
+                                      <p className="text-xs text-gray-400">Fresh</p>
+                                    </div>
+                                    <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                                      <span className="text-2xl font-bold text-red-400">
+                                        {batchResults.filter(r => r.success && !r.is_fresh).length}
+                                      </span>
+                                      <p className="text-xs text-gray-400">Rotten</p>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {batchResults.map((r, i) => (
+                                      <div key={i} className={`flex justify-between text-sm p-2 rounded ${r.success ? (r.is_fresh ? 'bg-emerald-500/10' : 'bg-red-500/10') : 'bg-gray-700'}`}>
+                                        <span className="truncate flex-1 text-gray-300">{r.filename}</span>
+                                        <span className={r.success ? (r.is_fresh ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500'}>
+                                          {r.success ? `${r.confidence.toFixed(0)}%` : 'Failed'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <button
+                                    onClick={resetSelection}
+                                    className="w-full mt-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium"
+                                  >
+                                    Process Another Batch
+                                  </button>
+                                </div>
+                              )}
+                              {!isBatchMode && (
+                                <button
+                                  onClick={handleBatchUpload}
+                                  disabled={loading}
+                                  className="w-full mt-4 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all bg-emerald-600 text-white hover:bg-emerald-700"
+                                >
+                                  <Upload className="w-6 h-6" /> Analyze {batchFiles.length} Files
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button
+                              onClick={handlePrediction}
+                              disabled={!file || loading}
+                              className={`w-full mt-4 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${
+                                !file
+                                  ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                                  : "bg-white text-gray-900 hover:bg-gray-100"
+                              }`}
+                            >
+                              <ScanSearch className="w-6 h-6" /> Detect File
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -962,7 +1318,16 @@ const App = () => {
                     title="Export CSV"
                   >
                     <Download className="w-4 h-4" />{" "}
-                    <span className="hidden sm:inline">Export</span>
+                    <span className="hidden sm:inline">CSV</span>
+                  </button>
+                  <button
+                    onClick={exportPDF}
+                    disabled={history.length === 0}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                    title="Export PDF Report"
+                  >
+                    <FileText className="w-4 h-4" />{" "}
+                    <span className="hidden sm:inline">PDF</span>
                   </button>
                   <button
                     onClick={clearAllHistory}
@@ -975,28 +1340,81 @@ const App = () => {
                 </div>
               </div>
               <HistoryAnalytics history={filteredHistory} />
-              <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 mb-4 flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
-                  <input
-                    type="text"
-                    placeholder="Search items..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-emerald-500 transition-colors"
-                  />
+              <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 mb-4 space-y-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="text"
+                      placeholder="Search by label, filename, batch ID, notes..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-emerald-500 transition-colors"
+                    />
+                  </div>
+                  <div className="relative w-full sm:w-36">
+                    <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="fresh">Fresh Only</option>
+                      <option value="rotten">Rotten Only</option>
+                    </select>
+                  </div>
+                  {uniqueFruitTypes.length > 0 && (
+                    <div className="relative w-full sm:w-40">
+                      <select
+                        value={filterFruitType}
+                        onChange={(e) => setFilterFruitType(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer capitalize"
+                      >
+                        <option value="all">All Fruits</option>
+                        {uniqueFruitTypes.map((type) => (
+                          <option key={type} value={type} className="capitalize">
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
-                <div className="relative w-full sm:w-40">
-                  <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer"
-                  >
-                    <option value="all">All Items</option>
-                    <option value="fresh">Fresh Only</option>
-                    <option value="rotten">Rotten Only</option>
-                  </select>
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                    <span className="text-gray-400 text-sm shrink-0">From:</span>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="flex-1 bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="text-gray-400 text-sm shrink-0">To:</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="flex-1 bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  {(dateFrom || dateTo || filterFruitType !== "all" || filterStatus !== "all" || searchTerm) && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm("");
+                        setFilterStatus("all");
+                        setFilterFruitType("all");
+                        setDateFrom("");
+                        setDateTo("");
+                      }}
+                      className="text-sm text-emerald-400 hover:text-emerald-300 whitespace-nowrap"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
                 </div>
               </div>
               {historyError && (
@@ -1078,6 +1496,16 @@ const App = () => {
                         {selectedHistoryItem.filename}
                       </span>
                     </div>
+                    {selectedHistoryItem.notes && (
+                      <div className="bg-gray-900 p-4 rounded-xl border border-gray-700 md:col-span-2">
+                        <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
+                          Notes
+                        </span>
+                        <span className="text-lg text-emerald-400 block">
+                          {selectedHistoryItem.notes}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <ResultDetailCard
                     modelUsed={selectedHistoryItem.model_used}
@@ -1135,6 +1563,11 @@ const App = () => {
                                 : item.filename}
                             </span>
                           </div>
+                          {item.notes && (
+                            <div className="text-xs text-emerald-400 mt-1 truncate max-w-[200px]">
+                              📝 {item.notes}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="text-right flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 border-gray-700 pt-3 sm:pt-0">
@@ -1144,7 +1577,7 @@ const App = () => {
                           </div>
                           <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
                             <Clock className="w-3 h-3" />
-                            {new Date(item.timestamp).toLocaleDateString()}
+                            {new Date(item.timestamp).toLocaleString()}
                           </div>
                         </div>
                         <button
