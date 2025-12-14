@@ -11,7 +11,10 @@
 ## 🔗 Live Demo
 
 - [👉 FreshX (Deployed Web)](https://www.freshx.site/)
-  _Note: The backend is hosted on a free tier; the first request might take 30-60 seconds to wake up._
+
+## 🎨 UI/UX
+
+- [👉 FreshX UI/UX]([https://www.freshx.site/](https://www.figma.com/design/gQa1MOIKG2hE288m0PKQPB/Untitled?node-id=0-1&t=z1ziT4IT7Hxk5YLg-1))
 
 &nbsp;
 
