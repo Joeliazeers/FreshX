@@ -20,17 +20,13 @@
 ### Core Detection
 
 - **🍎 Multi-Fruit Detection:** Detects and displays ALL fruits in an image with individual confidence scores
-- **📦 Batch Upload:** Process multiple images at once with progress tracking and summary results
 - **📷 Live Camera with Auto-Scan:** Real-time detection from webcam with automatic 1-second interval scanning
 - **🎯 Best Result Capture:** Auto-Scan saves only the highest confidence result to history
-- **🖼️ Annotated Preview:** Visual bounding boxes drawn around detected fruits
 
 ### Auto-Scan Technology
 
 - **⚡ Realtime Capture:** Analyzes camera feed every 1 second automatically
 - **📊 Live Feedback:** Shows capture count and best confidence in real-time
-- **🎯 Smart Save:** Only the best detection result is saved to history
-- **🧹 No Cache:** Temporary captures are cleared after stopping
 
 ### Analytics & Export
 
@@ -41,9 +37,7 @@
 ### Advanced History
 
 - **🔍 Advanced Filtering:** Filter by date range, fruit type, and freshness status
-- **🔎 Smart Search:** Search by label, filename, batch ID, or notes
 - **📝 Detection Notes:** Add custom notes (e.g., "Warehouse A, Batch #102") to each scan
-- **🕐 Local Timestamps:** Full date and time display in dd/mm/yy format
 
 ### Data Management
 
