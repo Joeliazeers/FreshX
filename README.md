@@ -15,7 +15,7 @@
 
 ## 🎨 UI/UX
 
-- [👉 FreshX (Deployed Web)](https://www.freshx.site/](https://www.figma.com/design/gQa1MOIKG2hE288m0PKQPB/Untitled?node-id=0-1&t=z1ziT4IT7Hxk5YLg-1))
+- [👉 FreshX (Deployed Web)](https://www.figma.com/design/gQa1MOIKG2hE288m0PKQPB/Untitled?node-id=0-1&t=z1ziT4IT7Hxk5YLg-1)
 
 &nbsp;
 
