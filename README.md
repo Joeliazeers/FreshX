@@ -4,9 +4,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![YOLOv8](https://img.shields.io/badge/YOLOv8-Object_Detection-0000FF?style=for-the-badge&logo=yolo&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Database-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 
-**FreshX** is a full-stack web application designed to detect and classify fruit quality (Fresh vs. Rotten) in real-time. Moving beyond simple classification, it utilizes **YOLOv8 Object Detection** to localize fruits within complex environments, ignoring background noise like cables or dark desks.
+**FreshX** is a full-stack web application that detects and classifies fruit quality (Fresh vs. Rotten) in real-time. It uses **YOLOv8 Object Detection** to localize and identify multiple fruits within complex environments, providing confidence scores and detailed analytics.
 
 ## 🔗 Live Demo
 
@@ -17,50 +17,79 @@
 
 ## 🚀 Features
 
-- **👁️ YOLOv8 Object Detection:** Uses a custom-trained YOLOv8 Nano model to draw bounding boxes around fruits, offering superior accuracy in "messy" environments compared to standard classification.
-- **📊 Smart Analytics:** Visualizes detection history with pie charts.
-- **☁️ Cloud Sync:** Automatically saves detection metadata to MongoDB Atlas.
+### Core Detection
+
+- **🍎 Multi-Fruit Detection:** Detects and displays ALL fruits in an image with individual confidence scores
+- **📦 Batch Upload:** Process multiple images at once with progress tracking and summary results
+- **📷 Live Camera with Auto-Scan:** Real-time detection from webcam with automatic 1-second interval scanning
+- **🎯 Best Result Capture:** Auto-Scan saves only the highest confidence result to history
+- **🖼️ Annotated Preview:** Visual bounding boxes drawn around detected fruits
+
+### Auto-Scan Technology
+
+- **⚡ Realtime Capture:** Analyzes camera feed every 1 second automatically
+- **📊 Live Feedback:** Shows capture count and best confidence in real-time
+- **🎯 Smart Save:** Only the best detection result is saved to history
+- **🧹 No Cache:** Temporary captures are cleared after stopping
+
+### Analytics & Export
+
+- **📊 Smart Analytics Dashboard:** Pie charts and trend graphs of detection history
+- **📄 PDF Export:** Generate professional reports with FreshX branding, summary statistics, and detection table
+- **📥 CSV Export:** Download properly formatted data with dd/mm/yy timestamps
+
+### Advanced History
+
+- **🔍 Advanced Filtering:** Filter by date range, fruit type, and freshness status
+- **🔎 Smart Search:** Search by label, filename, batch ID, or notes
+- **📝 Detection Notes:** Add custom notes (e.g., "Warehouse A, Batch #102") to each scan
+- **🕐 Local Timestamps:** Full date and time display in dd/mm/yy format
+
+### Data Management
+
+- **☁️ Cloud Sync:** Automatic save to MongoDB with device-based history
+- **🗑️ History Management:** View, delete individual items, or clear all history
 
 &nbsp;
 
 ## 🛠️ Tech Stack
 
-#### **Frontend (Client)**
+### Frontend
 
-- **Framework:** React 18 (Vite)
-- **Styling:** Tailwind CSS, Lucide React Icons
-- **Real-time Logic:** Recursive async frame capture
-- **Hosting:** Vercel
+| Technology      | Purpose            |
+| --------------- | ------------------ |
+| React 18 (Vite) | UI Framework       |
+| Tailwind CSS    | Styling            |
+| Recharts        | Charts & Analytics |
+| Lucide React    | Icons              |
+| jsPDF           | PDF Generation     |
 
-#
+### Backend
 
-#### **Backend (Server)**
+| Technology         | Purpose             |
+| ------------------ | ------------------- |
+| Flask (Python)     | REST API            |
+| Ultralytics YOLOv8 | AI Object Detection |
+| Pillow / NumPy     | Image Processing    |
+| PyMongo            | Database Driver     |
 
-- **Framework:** Flask (Python)
-- **AI Engine:** Ultralytics YOLOv8 (PyTorch)
-- **Image Processing:** Pillow (PIL), NumPy
-- **Hosting:** Railway
+### Database
 
-#
-
-#### **Database**
-
-- **Storage:** MongoDB Atlas (Cloud)
-- **Driver:** PyMongo
+| Technology | Purpose      |
+| ---------- | ------------ |
+| MongoDB    | Data Storage |
 
 &nbsp;
 
 ## 🏗️ System Architecture
 
-The project follows a decoupled Monorepo structure, deployed as two separate microservices:
-
 ```mermaid
 flowchart LR
     User["User Device"]
-    Frontend["Frontend (Vercel - React App)"]
-    Backend["Backend (Railway - Flask API)"]
+    Frontend["Frontend (React + Vite)"]
+    Backend["Backend (Flask API)"]
     Model["YOLOv8 Model (.pt)"]
-    DB["MongoDB Atlas"]
+    DB["MongoDB"]
 
     User -- "HTTPS" --> Frontend
     Frontend -- "REST API (Images)" --> Backend
@@ -72,68 +101,106 @@ flowchart LR
 
 ## ⚙️ Local Installation Guide
 
-Follow these steps to run the project on your local machine.
-&nbsp;
+### Prerequisites
 
-#### 1. Clone the Repository
+- Python 3.10+
+- Node.js 20+
+- MongoDB (local or Atlas)
 
-```markdown
-➤ git clone https://github.com/Joeliazeers/FreshX.git
-➤ cd freshx
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Joeliazeers/FreshX.git
+cd FreshX
 ```
 
-#### 2. Backend Setup
+### 2. Backend Setup
 
-```markdown
-1. Create a virtual environment
-   ➤ python -m venv .venv
+```bash
+cd backend
 
-2. Activate the environment
-   Windows:
-   ➤ .venv\Scripts\activate
-   Mac/Linux:
-   ➤ source .venv/bin/activate
+# Create virtual environment
+python -m venv venv
 
-3. Install dependencies
-   ➤ pip install -r requirements.txt
+# Activate environment
+# Windows:
+venv\Scripts\activate
+# Mac/Linux:
+source venv/bin/activate
 
-4. Set your Database Connection (Replace with your actual string)
-   Windows PowerShell:
-   ➤ $env:MONGO_URI="mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/freshx_db"
-   Mac/Terminal:
-   ➤ export MONGO_URI="mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/freshx_db"
+# Install dependencies
+pip install -r requirements.txt
 
-5. Run the Server
-   ➤ python app.py
+# Set MongoDB connection (replace with your URI)
+# Windows PowerShell:
+$env:MONGO_URI="mongodb://localhost:27017/"
+# Mac/Linux:
+export MONGO_URI="mongodb://localhost:27017/"
+
+# Run the server
+python app.py
 ```
 
-#### 3. Frontend Setup
+### 3. Frontend Setup
 
-```markdown
-➤ cd frontend
+```bash
+cd frontend
 
-1. Install Node modules
-   ➤ npm install
+# Install dependencies
+npm install
 
-2. Configure Local API Link
-   ➤ Create a file named .env.local inside the /frontend folder
-   Add this line:
-   ➤ VITE_API_URL=http://localhost:5000
+# Create environment file
+echo "VITE_API_URL=http://localhost:5000" > .env.local
 
-3. Run the Client
-   ➤ npm run dev
+# Run development server
+npm run dev
 ```
 
 &nbsp;
 
 ## 📡 API Documentation
 
-| Method     | Endpoint        | Description                                            |
-| :--------- | :-------------- | :----------------------------------------------------- |
-| **POST**   | `/predict`      | Analyzes uploaded image for freshness.                 |
-| **GET**    | `/history`      | Fetches the list of all past predictions from MongoDB. |
-| **DELETE** | `/history/<id>` | Deletes a single history record by ID.                 |
-| **DELETE** | `/history`      | Clears the entire database history.                    |
+| Method     | Endpoint        | Description                                                                              |
+| ---------- | --------------- | ---------------------------------------------------------------------------------------- |
+| **POST**   | `/predict`      | Analyze image. Use `save=false` for temp captures, `save=true` to persist to history.   |
+| **GET**    | `/history`      | Fetch all past predictions for current device.                                           |
+| **DELETE** | `/history/<id>` | Delete a single history record by ID.                                                    |
+| **DELETE** | `/history`      | Clear entire history for current device.                                                 |
+
+### POST /predict Request
+
+```
+FormData:
+  - file: Image file (required)
+  - save: "true" or "false" (default: "true")
+  - notes: Optional notes string
+```
+
+### POST /predict Response
+
+```json
+{
+  "label": "Fresh Apple",
+  "confidence": 95.2,
+  "is_fresh": true,
+  "model_used": "YOLOv8",
+  "heatmap_b64": "...",
+  "detections": [
+    {"label": "Fresh Apple", "confidence": 95.2, "is_fresh": true, "bbox": [x1, y1, x2, y2]},
+    {"label": "Rotten Banana", "confidence": 87.5, "is_fresh": false, "bbox": [x1, y1, x2, y2]}
+  ],
+  "detection_count": 2
+}
+```
+
+&nbsp;
+
+## 📁 File Validation
+
+| Constraint    | Value          |
+| ------------- | -------------- |
+| Allowed Types | PNG, JPG, JPEG |
+| Max File Size | 5 MB           |
 
 &nbsp;
 

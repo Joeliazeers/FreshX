@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+/* Fix viewport height on all screen aspect ratios (16:9, 16:10, etc.) */
+html, body, #root {
+  height: 100%;
+  min-height: 100dvh; /* Dynamic viewport height - handles mobile browsers too */
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* Fallback for browsers that don't support dvh */
+@supports not (min-height: 100dvh) {
+  html, body, #root {
+    min-height: 100vh;
+  }
+}
+
+/* Prevent white space at bottom */
+.app-container {
+  min-height: 100dvh;
+  min-height: 100vh; /* fallback */
+  display: flex;
+  flex-direction: column;
+}

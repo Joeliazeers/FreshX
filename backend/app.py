@@ -31,6 +31,7 @@ def predict():
 
     user_id = request.headers.get('x-device-id', 'anonymous')
     notes = request.form.get('notes', '')
+    save_to_db = request.form.get('save', 'true').lower() == 'true'
 
     try:
         image_bytes = file.read()
@@ -84,23 +85,25 @@ def predict():
             'detection_count': len(detections)
         }
 
-        try:
-            history_record = {
-                "user_id": user_id,  
-                "filename": file.filename,
-                "label": primary_label.title(),
-                "confidence": float(highest_conf * 100),
-                "is_fresh": is_fresh,
-                "model_used": 'YOLOv8',
-                "detections": detections,
-                "detection_count": len(detections),
-                "notes": notes,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            insert_history_record(history_record)
-        except Exception as e:
-            print(f"Database Error: {e}")
+        # Only save to history if save_to_db is True (allows temp captures without DB save)
+        if save_to_db:
+            try:
+                history_record = {
+                    "user_id": user_id,  
+                    "filename": file.filename,
+                    "label": primary_label.title(),
+                    "confidence": float(highest_conf * 100),
+                    "is_fresh": is_fresh,
+                    "model_used": 'YOLOv8',
+                    "detections": detections,
+                    "detection_count": len(detections),
+                    "notes": notes,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                insert_history_record(history_record)
+            except Exception as e:
+                print(f"Database Error: {e}")
 
         return jsonify(response_data)
 

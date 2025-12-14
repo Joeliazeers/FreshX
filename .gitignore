@@ -92,3 +92,5 @@ backend/yolo11n.pt
 
 # ...BUT force Git to keep ONLY our best custom model
 !backend/best.pt
+
+docs/

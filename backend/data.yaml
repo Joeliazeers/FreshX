@@ -12,9 +12,3 @@ names:
     "rotten orange",
     "rotten apple",
   ]
-
-roboflow:
-  workspace: alrz-nt-wcyue
-  project: fresh-and-rotten-fruits-aa5ae
-  version: 3
-  license: CC BY 4.0

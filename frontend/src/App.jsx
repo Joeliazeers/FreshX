@@ -367,6 +367,13 @@ const App = () => {
   const [batchResults, setBatchResults] = useState([]);
   const [isBatchMode, setIsBatchMode] = useState(false);
 
+  // Realtime Camera Capture
+  const [isRealtimeCapture, setIsRealtimeCapture] = useState(false);
+  const [bestRealtimeResult, setBestRealtimeResult] = useState(null);
+  const [bestRealtimeBlob, setBestRealtimeBlob] = useState(null);
+  const [captureCount, setCaptureCount] = useState(0);
+  const realtimeIntervalRef = useRef(null);
+
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
@@ -377,6 +384,10 @@ const App = () => {
     });
     return () => {
       stopCamera();
+      // Clear realtime capture interval on unmount
+      if (realtimeIntervalRef.current) {
+        clearInterval(realtimeIntervalRef.current);
+      }
     };
   }, []);
 
@@ -497,6 +508,140 @@ const App = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Analyze image without saving to history (for temp realtime captures)
+  const analyzeImageTemp = async (imageBlob) => {
+    const formData = new FormData();
+    formData.append("file", imageBlob, "realtime_capture.jpg");
+    formData.append("save", "false"); // Don't save to DB
+
+    try {
+      const response = await fetch(`${API_URL}/predict`, {
+        method: "POST",
+        headers: { "x-device-id": getDeviceId() },
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        setCaptureCount((prev) => prev + 1);
+        // Update best result if this one has higher confidence
+        setBestRealtimeResult((prevBest) => {
+          if (!prevBest || data.confidence > prevBest.confidence) {
+            // Store the blob for this best result
+            setBestRealtimeBlob(imageBlob);
+            return data;
+          }
+          return prevBest;
+        });
+        // Show current result for live feedback
+        setResult(data);
+      }
+    } catch (err) {
+      console.error("Realtime capture error:", err);
+    }
+  };
+
+  // Start realtime capture with 1s interval
+  const startRealtimeCapture = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    setIsRealtimeCapture(true);
+    setBestRealtimeResult(null);
+    setCaptureCount(0);
+    setResult(null);
+    setError(null);
+
+    // Capture immediately first
+    captureFrame();
+
+    // Then capture every 1 second
+    realtimeIntervalRef.current = setInterval(() => {
+      captureFrame();
+    }, 1000);
+  };
+
+  // Capture a single frame for realtime analysis
+  const captureFrame = async () => {
+    if (!videoRef.current || !canvasRef.current || !isCameraActive) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.8)
+    );
+
+    if (blob) {
+      analyzeImageTemp(blob);
+    }
+  };
+
+  // Stop realtime capture and save only the best result
+  const stopRealtimeCapture = async () => {
+    // Clear interval
+    if (realtimeIntervalRef.current) {
+      clearInterval(realtimeIntervalRef.current);
+      realtimeIntervalRef.current = null;
+    }
+
+    setIsRealtimeCapture(false);
+
+    // If we have a best result and its stored blob, save it to history
+    if (bestRealtimeResult && bestRealtimeBlob) {
+      stopCamera();
+      setLoading(true);
+
+      // Save the STORED best blob to history (not a new capture)
+      const formData = new FormData();
+      formData.append("file", bestRealtimeBlob, "best_realtime_capture.jpg");
+      formData.append("save", "true");
+      formData.append("notes", notes);
+
+      try {
+        const response = await fetch(`${API_URL}/predict`, {
+          method: "POST",
+          headers: { "x-device-id": getDeviceId() },
+          body: formData,
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          setResult(data);
+          const newHistoryItem = {
+            _id: "temp-" + Date.now(),
+            filename: "best_realtime_capture.jpg",
+            label: data.label,
+            confidence: data.confidence,
+            is_fresh: data.is_fresh,
+            timestamp: new Date().toISOString(),
+            model_used: data.model_used || "YOLO",
+            notes: notes,
+            detections: data.detections || [],
+            detection_count: data.detection_count || 1,
+          };
+          setHistory((prev) => [newHistoryItem, ...prev]);
+        }
+      } catch (err) {
+        setError("Failed to save best result.");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      stopCamera();
+    }
+
+    // Clear all temp data
+    setBestRealtimeResult(null);
+    setBestRealtimeBlob(null);
+    setCaptureCount(0);
   };
 
   const handleFileChange = (e) => {
@@ -686,6 +831,18 @@ const App = () => {
 
   const exportData = () => {
     if (history.length === 0) return;
+    
+    // Helper function to escape CSV fields
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '""';
+      const str = String(value);
+      // If the value contains comma, quote, or newline, wrap in quotes and escape existing quotes
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    
     const headers = [
       "Timestamp",
       "Filename",
@@ -695,25 +852,27 @@ const App = () => {
       "Model",
       "Notes",
     ];
+    
     const rows = history.map((item) => [
-      item.timestamp,
-      item.filename,
-      item.label,
+      escapeCSV(new Date(item.timestamp).toLocaleString('en-GB')),
+      escapeCSV(item.filename),
+      escapeCSV(item.label),
       item.is_fresh ? "Yes" : "No",
       item.confidence.toFixed(2),
-      item.model_used,
-      `"${(item.notes || "").replace(/"/g, '""')}"`,
+      escapeCSV(item.model_used),
+      escapeCSV(item.notes || ""),
     ]);
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    
+    const csvContent = [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", "freshx_history_export.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const exportPDF = () => {
@@ -784,7 +943,7 @@ const App = () => {
   const uniqueFruitTypes = [...new Set(history.map((item) => {
     const label = item.label.toLowerCase();
     return label.replace(/fresh |rotten /gi, "").trim();
-  }))].filter(Boolean);
+  }))].filter(type => type && !type.includes("no fruit") && !type.includes("no detection"));
 
   const filteredHistory = history.filter((item) => {
     const searchLower = searchTerm.toLowerCase();
@@ -815,11 +974,11 @@ const App = () => {
     : "fruit";
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-emerald-500 selection:text-white pb-10">
+    <div className="app-container min-h-screen bg-gray-900 text-white font-sans selection:bg-emerald-500 selection:text-white overflow-y-auto">
       <style>{scannerStyles}</style>
 
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <header className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
+      <div className="container mx-auto px-4 py-4 max-w-4xl">
+        <header className="flex flex-col md:flex-row items-center justify-between mb-4 gap-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center transform rotate-3 shrink-0">
               <span className="font-bold text-gray-900 text-xl">F</span>
@@ -865,7 +1024,7 @@ const App = () => {
           <canvas ref={canvasRef} style={{ display: "none" }}></canvas>
           {activeTab === "scanner" ? (
             <div className="w-full max-w-xl animate-in fade-in zoom-in duration-300">
-              <div className="text-center mb-6">
+              <div className="text-center mb-4">
                 <h2 className="text-3xl md:text-4xl font-extrabold mb-4 bg-clip-text text-transparent bg-linear-to-r from-white to-gray-400">
                   Is your fruit fresh?
                 </h2>
@@ -901,6 +1060,8 @@ const App = () => {
                     onClick={() => {
                       setScannerMode("camera");
                       resetSelection();
+                      // Auto-start camera when switching to camera mode
+                      startCamera();
                     }}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       scannerMode === "camera"
@@ -925,14 +1086,57 @@ const App = () => {
                           playsInline
                           muted
                         />
-                        <div className="absolute bottom-4 z-30">
-                          <button
-                            onClick={captureSnapshot}
-                            className="bg-white text-gray-900 rounded-full px-6 py-2 font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
-                          >
-                            <Camera className="w-5 h-5 text-red-500" /> Capture
-                            & Analyze
-                          </button>
+                        {/* Live stats overlay during realtime capture */}
+                        {isRealtimeCapture && (
+                          <div className="absolute top-4 left-4 right-4 z-30 flex justify-between items-start">
+                            <div className="bg-black/70 backdrop-blur-md rounded-lg px-3 py-2 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                                <span className="text-white font-medium">Auto-Scanning</span>
+                              </div>
+                              <div className="text-gray-300 mt-1">
+                                Captures: {captureCount}
+                              </div>
+                            </div>
+                            {bestRealtimeResult && (
+                              <div className="bg-black/70 backdrop-blur-md rounded-lg px-3 py-2 text-xs text-right">
+                                <div className="text-gray-400">Best Confidence</div>
+                                <div className={`text-lg font-bold ${bestRealtimeResult.is_fresh ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {bestRealtimeResult.confidence.toFixed(1)}%
+                                </div>
+                                <div className={`text-xs ${bestRealtimeResult.is_fresh ? 'text-emerald-300' : 'text-red-300'}`}>
+                                  {bestRealtimeResult.label}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {/* Camera controls with notes input */}
+                        <div className="absolute bottom-4 left-4 right-4 z-30 flex flex-col items-center gap-3">
+                          {!isRealtimeCapture && (
+                            <input
+                              type="text"
+                              value={notes}
+                              onChange={(e) => setNotes(e.target.value)}
+                              placeholder="Add notes (optional)"
+                              className="w-full max-w-xs px-3 py-2 bg-black/60 backdrop-blur-md border border-gray-500 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:border-emerald-500 transition-colors"
+                            />
+                          )}
+                          {isRealtimeCapture ? (
+                            <button
+                              onClick={stopRealtimeCapture}
+                              className="bg-red-500 hover:bg-red-600 text-white rounded-full px-6 py-2 font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                            >
+                              <X className="w-5 h-5" /> Stop & Save Best
+                            </button>
+                          ) : (
+                            <button
+                              onClick={startRealtimeCapture}
+                              className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-full px-6 py-2 font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
+                            >
+                              <Video className="w-5 h-5" /> Start Auto-Scan
+                            </button>
+                          )}
                         </div>
                       </>
                     ) : result ? (
@@ -951,23 +1155,10 @@ const App = () => {
                       </div>
                     ) : (
                       <div className="w-full h-full rounded-2xl border border-gray-700 bg-gray-900 flex flex-col items-center justify-center text-center p-4">
-                        <Video className="w-12 h-12 text-gray-600 mb-4" />
+                        <Loader2 className="w-12 h-12 text-emerald-500 mb-4 animate-spin" />
                         <p className="text-lg font-medium text-gray-400">
-                          Camera Ready
+                          Starting Camera...
                         </p>
-                        <input
-                          type="text"
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                          placeholder="Add notes (optional)"
-                          className="mt-4 w-full max-w-xs px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition-colors"
-                        />
-                        <button
-                          onClick={startCamera}
-                          className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 text-white"
-                        >
-                          <Camera className="w-4 h-4" /> Start Camera
-                        </button>
                       </div>
                     )
                   ) : (
@@ -1387,6 +1578,7 @@ const App = () => {
                     <span className="text-gray-400 text-sm shrink-0">From:</span>
                     <input
                       type="date"
+                      lang="en-GB"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
                       className="flex-1 bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
@@ -1396,6 +1588,7 @@ const App = () => {
                     <span className="text-gray-400 text-sm shrink-0">To:</span>
                     <input
                       type="date"
+                      lang="en-GB"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
                       className="flex-1 bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
@@ -1459,7 +1652,7 @@ const App = () => {
                           <Clock className="w-4 h-4" />
                           {new Date(
                             selectedHistoryItem.timestamp
-                          ).toLocaleString()}
+                          ).toLocaleString('en-GB')}
                         </p>
                       </div>
                     </div>
@@ -1577,7 +1770,7 @@ const App = () => {
                           </div>
                           <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
                             <Clock className="w-3 h-3" />
-                            {new Date(item.timestamp).toLocaleString()}
+                            {new Date(item.timestamp).toLocaleString('en-GB')}
                           </div>
                         </div>
                         <button
