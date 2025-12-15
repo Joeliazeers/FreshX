@@ -14,9 +14,9 @@
 
 &nbsp;
 
-## 🎨 UI/UX
+## 🎨 User Interface
 
-- [👉 FreshX UI/UX](https://www.figma.com/design/gQa1MOIKG2hE288m0PKQPB/Untitled?node-id=0-1&t=z1ziT4IT7Hxk5YLg-1)
+- [👉 FreshX UI (FIGMA)](https://www.figma.com/design/gQa1MOIKG2hE288m0PKQPB/Untitled?node-id=0-1&t=z1ziT4IT7Hxk5YLg-1)
 
 &nbsp;
 
