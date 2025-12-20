@@ -6,7 +6,7 @@
 ![YOLOv8](https://img.shields.io/badge/YOLOv8-Object_Detection-0000FF?style=for-the-badge&logo=yolo&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Database-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 
-**FreshX** is a full-stack web application that detects and classifies fruit quality (Fresh vs. Rotten) in real-time. It uses **YOLOv8 Object Detection** to localize and identify multiple fruits within complex environments, providing confidence scores and detailed analytics.
+**FreshX** is a web application that detects and classifies fruit quality (Fresh vs. Rotten) in real-time. It uses **YOLOv8 Object Detection** to localize and identify multiple fruits within complex environments, providing confidence scores and detailed analytics.
 
 ## 🔗 Live Demo
 
